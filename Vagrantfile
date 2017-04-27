@@ -3,7 +3,7 @@
 
 $INSTALL_BASE = <<SCRIPT
   sudo apt-get update
-  sudo apt-get install -y build-essential vim emacs
+  sudo apt-get install -y build-essential vim
 
   echo "tc qdisc add dev enp0s8 root netem loss 10% delay 20ms" > /set-loss.sh
   chmod 755 /set-loss.sh
