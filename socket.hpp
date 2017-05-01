@@ -1,3 +1,6 @@
+#ifndef _SOCKET_HPP
+#define _SOCKET_HPP
+
 class SendingSocket {
  public:
   SendingSocket(const std::string& host, const std::string& port);
@@ -13,3 +16,5 @@ class ReceivingSocket {
  private:
   int sockfd;
 };
+
+#endif  // _SOCKET_HPP
