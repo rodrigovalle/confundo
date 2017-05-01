@@ -1,8 +1,11 @@
+#include "udpsocket.hpp"
+
 #include <string>
 #include <thread>
 #include <iostream>
 
 int main()
 {
-  std::cerr << "client is not implemented yet" << std::endl;
+  UDPSocket sock("localhost", 3000);
+  sock.send // TODO
 }
