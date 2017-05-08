@@ -14,4 +14,5 @@ specifying the full path to the `tcp.lua` script:
     wireshark -X lua_script:./confundo.lua
 
 ## Helpful links
-[UDP tutorial](http://www.microhowto.info/howto/send_a_udp_datagram_in_c.html)
+[UDP tutorial](http://www.microhowto.info/howto/send_a_udp_datagram_in_c.html)  
+Linux man page for getaddrinfo()

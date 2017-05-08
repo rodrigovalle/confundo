@@ -3,8 +3,15 @@
 #include <thread>
 #include <iostream>
 
-int main()
+int main(int argc, char* argv[])
 {
-  UDPSocket sock();
-  std::cerr << "server is not implemented yet" << std::endl;
+  if (argc != 3) {
+    std::cout << "./server <PORT> <FILE-DIR>" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  try {
+    UDPSocket sock(argv[1]);
+    sock.recv();
+  }
 }
