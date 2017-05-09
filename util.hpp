@@ -1,11 +1,11 @@
 #ifndef _UTIL_HPP
 #define _UTIL_HPP
 
-#include <string>
 #include <cerrno>
 #include <cstring>
+#include <string>
 
-std::string mkerrorstr(std::string fn_name) {
+inline std::string mkerrorstr(const std::string& fn_name) {
   return std::string(fn_name + ": " + strerror(errno));
 }
 

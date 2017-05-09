@@ -1,8 +1,8 @@
 #include "udpsocket.hpp"
 
-#include <string>
-#include <thread>
-#include <iostream>
+#include <cstdlib>  // EXIT_*
+#include <iostream> // std::cout, std::cerr
+#include <string>   // std::string
 
 int main(int argc, char* argv[])
 {

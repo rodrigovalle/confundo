@@ -1,13 +1,13 @@
 #include "udpsocket.hpp"
 #include "util.hpp"
 
+#include <stdexcept>     // std::runtime_error
+#include <string>        // std::string
+
 #include <sys/types.h>
 #include <sys/socket.h>  // send/recv, socket
 #include <netdb.h>       // getaddrinfo
 #include <unistd.h>      // close
-
-#include <string>        // std::string
-#include <stdexcept>     // std::runtime_error
 
 
 /* client constructor */
@@ -108,12 +108,13 @@ void UDPSocket::send(const char* data, size_t size) {
 
 size_t UDPSocket::recv(char** data) {
   ssize_t received;
+  auto buffer = static_cast<char*>(buf);
 
-  received = ::recv(sockfd, buf, MAXUDPSIZE, 0);
+  received = ::recv(sockfd, buffer, MAXUDPSIZE, 0);
   if (received == -1) {
     throw std::runtime_error{mkerrorstr("recv")};
   }
 
-  *data = buf;
+  *data = buffer;
   return received;
 }
