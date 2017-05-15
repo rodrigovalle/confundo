@@ -3,8 +3,6 @@
 
 #include <string>
 
-#define MAXUDPSIZE 524
-
 /* TODO: implement copy/move constructor/assignment? */
 class UDPSocket {
  public:
@@ -17,12 +15,12 @@ class UDPSocket {
   UDPSocket& operator=(const UDPSocket& other) = delete;
   UDPSocket& operator=(const UDPSocket&& other) = delete;
 
-  void send(const char* data, size_t size);
-  size_t recv(char** data);
+  /* it's up to the user to make sure that the buffer has enough space */
+  void send(const uint8_t data[], size_t size);
+  void recv(uint8_t data[], size_t size);
 
  private:
   int sockfd;
-  char buf[MAXUDPSIZE];
 };
 
 #endif // UDPSOCKET_HPP

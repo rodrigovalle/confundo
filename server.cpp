@@ -12,9 +12,9 @@ int main(int argc, char* argv[])
   }
 
   try {
-    char* data;
+    uint8_t data[256];
     UDPSocket sock(argv[1]);
-    sock.recv(&data);
+    sock.recv(data, 256);
     std::cout << data << std::endl;
     return EXIT_SUCCESS;
   } catch (std::runtime_error& e) {

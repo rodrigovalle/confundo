@@ -97,7 +97,7 @@ UDPSocket::~UDPSocket() {
 }
 
 
-void UDPSocket::send(const char* data, size_t size) {
+void UDPSocket::send(const uint8_t data[], size_t size) {
   /* UDP send will either succeed completely, or fail
    * see: http://stackoverflow.com/questions/43746020 */
   if (::send(sockfd, data, size, 0) == -1) {
@@ -106,15 +106,8 @@ void UDPSocket::send(const char* data, size_t size) {
 }
 
 
-size_t UDPSocket::recv(char** data) {
-  ssize_t received;
-  auto buffer = static_cast<char*>(buf);
-
-  received = ::recv(sockfd, buffer, MAXUDPSIZE, 0);
-  if (received == -1) {
+void UDPSocket::recv(uint8_t data[], size_t size) {
+  if (::recv(sockfd, data, size, 0) == -1) {
     throw std::runtime_error{mkerrorstr("recv")};
   }
-
-  *data = buffer;
-  return received;
 }
