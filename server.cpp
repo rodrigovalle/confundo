@@ -1,4 +1,4 @@
-#include "udpsocket.hpp"
+#include "confundosocket.hpp"
 
 #include <cstdlib>  // EXIT_*
 #include <iostream> // std::cout, std::cerr
@@ -12,10 +12,7 @@ int main(int argc, char* argv[])
   }
 
   try {
-    uint8_t data[256];
-    UDPSocket sock(argv[1]);
-    sock.recv(data, 256);
-    std::cout << data << std::endl;
+    ConfundoSocket sock(argv[1]);
     return EXIT_SUCCESS;
   } catch (std::runtime_error& e) {
     std::cerr << "ERROR: " << e.what() << std::endl;

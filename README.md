@@ -15,4 +15,5 @@ specifying the full path to the `tcp.lua` script:
 
 ## Helpful links
 [UDP tutorial](http://www.microhowto.info/howto/send_a_udp_datagram_in_c.html)  
+[UDP reading partially from sockets](http://stackoverflow.com/questions/3069204)  
 Linux man page for getaddrinfo()
