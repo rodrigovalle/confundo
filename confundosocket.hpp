@@ -35,4 +35,5 @@ class ConfundoSocket {
   void listen();
   void send_packet();
   UDPSocket sock;
+  struct cf_header tx_hdr;
 };

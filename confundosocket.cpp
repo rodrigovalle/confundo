@@ -11,8 +11,8 @@ enum Operation {
   DROP
 };
 
-static void clear_header(struct cf_packet* pkt) {
-  memset(pkt, 0, sizeof(struct cf_header));
+static void clear_hdr(struct cf_header* hdr) {
+  memset(hdr, 0, sizeof(struct cf_header));
 }
 
 static void report(Operation op, struct cf_header* hdr, uint32_t cwnd,
@@ -48,9 +48,8 @@ ConfundoSocket::ConfundoSocket(const std::string& host, const std::string& port)
     : sock{host, port} {
 }
 
-ConfundoSocket::ConfundoSocket(const std::string& port) : sock(port) {
+ConfundoSocket::ConfundoSocket(const std::string& port) : sock{port}, tx_hdr{} {
   struct cf_header rx_hdr;
-  struct cf_header tx_hdr = {};
 
   // ignore payload (like the linux kernel would)
   sock.recv(reinterpret_cast<uint8_t*>(&rx_hdr), sizeof(struct cf_header));
@@ -72,6 +71,8 @@ ConfundoSocket::ConfundoSocket(const std::string& port) : sock(port) {
 
 // TODO: currently blasts UDP packets @server, needs to wait
 void ConfundoSocket::send_all(const std::string& data) {
+  for (auto i = data.begin(); i != data.end(); i++) {
+  }
 }
 
 std::string ConfundoSocket::receive() { return ""; }
@@ -93,8 +94,6 @@ void ConfundoSocket::connect() {
   if (!(rx_hdr.syn_f && rx_hdr.ack_f)) {
     throw std::runtime_error("no syn-ack response from server");
   }
-
-  memset(&tx_hdr, 0, sizeof(struct cf_header));
 }
 
 void ConfundoSocket::listen() {}
