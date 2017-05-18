@@ -1,3 +1,6 @@
+#ifndef _CONFUNDOSOCKET_HPP
+#define _CONFUNDOSOCKET_HPP
+
 #include "udpsocket.hpp"
 
 #include <cstdint>
@@ -37,3 +40,5 @@ class ConfundoSocket {
   UDPSocket sock;
   struct cf_header tx_hdr;
 };
+
+#endif // _CONFUNDOSOCKET_HPP

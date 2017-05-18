@@ -1,47 +1,13 @@
 #include "confundosocket.hpp"
+#include "util.hpp"
 
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 
-enum Operation {
-  SEND,
-  RECV,
-  DROP
-};
-
 static void clear_hdr(struct cf_header* hdr) {
   memset(hdr, 0, sizeof(struct cf_header));
-}
-
-static void report(Operation op, struct cf_header* hdr, uint32_t cwnd,
-                   uint32_t ssthresh) {
-  switch (op) {
-    case SEND:
-      std::cout << "SEND ";
-    case RECV:
-      std::cout << "RECV ";
-    case DROP:
-      std::cout << "DROP ";
-  }
-
-  std::cout << hdr->seq << " ";
-  std::cout << hdr->ack << " ";
-  std::cout << hdr->conn << " ";
-  std::cout << cwnd << " ";
-  std::cout << ssthresh;
-
-  if (hdr->ack_f) {
-    std::cout << " ACK";
-  }
-  if (hdr->syn_f) {
-    std::cout << " SYN";
-  }
-  if (hdr->fin_f) {
-    std::cout << " FIN";
-  }
-  std::cout << std::endl;
 }
 
 ConfundoSocket::ConfundoSocket(const std::string& host, const std::string& port)
