@@ -13,6 +13,7 @@ int main(int argc, char* argv[])
 
   try {
     ConfundoSocket sock(argv[1]);
+    std::cout << "handshake successful" << std::endl;
     return EXIT_SUCCESS;
   } catch (std::runtime_error& e) {
     std::cerr << "ERROR: " << e.what() << std::endl;

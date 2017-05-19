@@ -4,10 +4,13 @@ void report(op_T op, struct cf_header* hdr, uint32_t cwnd, uint32_t ssthresh) {
   switch (op) {
     case SEND:
       std::cout << "SEND ";
+      break;
     case RECV:
       std::cout << "RECV ";
+      break;
     case DROP:
       std::cout << "DROP ";
+      break;
   }
 
   std::cout << hdr->seq << " ";

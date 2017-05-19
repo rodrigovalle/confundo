@@ -111,3 +111,15 @@ void UDPSocket::recv(uint8_t data[], size_t size) {
     throw std::runtime_error{mkerrorstr("recv")};
   }
 }
+
+void UDPSocket::recv_connect(uint8_t data[], size_t size) {
+  struct sockaddr addr;
+  socklen_t addrlen;
+  if (::recvfrom(sockfd, data, size, 0, &addr, &addrlen) == -1) {
+    throw std::runtime_error{mkerrorstr("recvfrom")};
+  }
+
+  if (::connect(sockfd, &addr, addrlen) == -1) {
+    throw std::runtime_error{mkerrorstr("connect")};
+  }
+}
