@@ -106,20 +106,28 @@ void UDPSocket::send(const uint8_t data[], size_t size) {
 }
 
 
-void UDPSocket::recv(uint8_t data[], size_t size) {
-  if (::recv(sockfd, data, size, 0) == -1) {
+size_t UDPSocket::recv(uint8_t data[], size_t size) {
+  ssize_t recv_b;
+
+  if ((recv_b = ::recv(sockfd, data, size, 0)) == -1) {
     throw std::runtime_error{mkerrorstr("recv")};
   }
+
+  return recv_b;
 }
 
-void UDPSocket::recv_connect(uint8_t data[], size_t size) {
+size_t UDPSocket::recv_connect(uint8_t data[], size_t size) {
   struct sockaddr addr;
   socklen_t addrlen;
-  if (::recvfrom(sockfd, data, size, 0, &addr, &addrlen) == -1) {
+  ssize_t recv_b;
+
+  if ((recv_b = ::recvfrom(sockfd, data, size, 0, &addr, &addrlen)) == -1) {
     throw std::runtime_error{mkerrorstr("recvfrom")};
   }
 
   if (::connect(sockfd, &addr, addrlen) == -1) {
     throw std::runtime_error{mkerrorstr("connect")};
   }
+
+  return recv_b;
 }

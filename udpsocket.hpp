@@ -17,8 +17,8 @@ class UDPSocket {
 
   /* it's up to the user to make sure that the buffer has enough space */
   void send(const uint8_t data[], size_t size);
-  void recv(uint8_t data[], size_t size);
-  void recv_connect(uint8_t data[], size_t size);
+  size_t recv(uint8_t data[], size_t size);
+  size_t recv_connect(uint8_t data[], size_t size);
 
  private:
   int sockfd;

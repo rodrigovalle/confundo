@@ -39,12 +39,15 @@ class ConfundoSocket {
   std::string receive();
 
  private:
-  void connect();
-  void listen();
-  void send_header();
-  void send_packet(const uint8_t data[], size_t size);
+  inline void send_header(const struct cf_header* hdr);
+  inline void recv_header(struct cf_header* hdr);
+  void send_payload(const uint8_t data[], size_t size);
+  size_t recv_payload(uint8_t payload[PAYLOAD], size_t size);
   UDPSocket sock;
-  struct cf_header tx_hdr;
+  uint32_t snd_nxt; // sequence no. of next byte in the stream
+  uint32_t snd_una; // earliest sequence no. that has been sent but not acked
+  uint32_t rcv_nxt; // sequence no. of next byte expected to be recvd from peer
+  uint16_t conn_id;
 };
 
 #endif // _CONFUNDOSOCKET_HPP
