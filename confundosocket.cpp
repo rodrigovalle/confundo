@@ -24,8 +24,49 @@ static void net_to_host(struct cf_header* hdr) {
   hdr->flgs = ntohs(hdr->flgs);
 }
 
-ConfundoSocket::ConfundoSocket(const std::string& host, const std::string& port)
-    : sock{host, port} {
+ConfundoSocket ConfundoSocket::accept(const UDPSocket& socket, uint16_t id) {
+  struct cf_header rx_hdr;
+  struct sockaddr addr;
+  socklen_t addrlen;
+
+  // recv syn
+  socket.recvfrom(reinterpret_cast<uint8_t*>(&rx_hdr), sizeof(struct cf_header),
+                  &addr, &addrlen);
+  net_to_host(&rx_hdr);
+  return ConfundoSocket{UDPConnection{socket, addr, addrlen}, &rx_hdr, id};
+}
+
+ConfundoSocket ConfundoSocket::connect(const UDPSocket& socket,
+                                       const std::string& hostname,
+                                       const std::string& port) {
+  return ConfundoSocket{UDPConnection{socket, hostname, port}};
+}
+
+ConfundoSocket::ConfundoSocket(UDPConnection conn, struct cf_header* syn_hdr,
+                               uint16_t id)
+    : sock{conn}, conn_id{id} {
+  struct cf_header tx_hdr = {};
+
+  if (!(syn_hdr->syn_f)) {
+    throw std::runtime_error("received non-syn packet");
+  }
+
+  rcv_nxt = syn_hdr->seq + 1;
+
+  // send syn-ack
+  tx_hdr.syn_f = true;
+  tx_hdr.ack_f = true;
+  tx_hdr.seq = SERVERSYN;
+  tx_hdr.ack = rcv_nxt;
+  tx_hdr.conn = conn_id;
+  send_header(&tx_hdr);
+
+  snd_nxt = SERVERSYN + 1;
+
+  // TODO: client could send an ACK with or without a payload
+}
+
+ConfundoSocket::ConfundoSocket(UDPConnection conn) : sock{conn} {
   // client: connect
   struct cf_header tx_hdr = {};
   struct cf_header rx_hdr;
@@ -47,34 +88,6 @@ ConfundoSocket::ConfundoSocket(const std::string& host, const std::string& port)
   rcv_nxt = rx_hdr.seq + 1;
 
   // TODO: need to send an ACK with first payload to finish connecting
-}
-
-// TODO: conn_id
-ConfundoSocket::ConfundoSocket(const std::string& port)
-    : sock{port} {
-  // server: listen
-  struct cf_header tx_hdr = {};
-  struct cf_header rx_hdr;
-
-  // recv syn
-  recv_header(&rx_hdr);
-  if (!(rx_hdr.syn_f)) {
-    throw std::runtime_error("received non-syn packet");
-  }
-
-  rcv_nxt = rx_hdr.seq + 1;
-
-  // send syn-ack
-  tx_hdr.syn_f = true;
-  tx_hdr.ack_f = true;
-  tx_hdr.seq = SERVERSYN;
-  tx_hdr.ack = rcv_nxt;
-  tx_hdr.conn = conn_id;
-  send_header(&tx_hdr);
-
-  snd_nxt = SERVERSYN + 1;
-
-  // TODO: client could send an ACK with or without a payload
 }
 
 void ConfundoSocket::send_all(const std::string& data) {

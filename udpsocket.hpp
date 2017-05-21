@@ -2,25 +2,30 @@
 #define UDPSOCKET_HPP
 
 #include <string>
+#include <sys/socket.h>
 
-/* TODO: implement copy/move constructor/assignment? */
+class UDPConnection;
+
 class UDPSocket {
  public:
-  UDPSocket(const std::string& host, const std::string& port);  // client
-  explicit UDPSocket(const std::string& port);  // server
   UDPSocket(const UDPSocket& other) = delete;
-  UDPSocket(const UDPSocket&& other) = delete;
+  UDPSocket(UDPSocket&& other) noexcept;
   ~UDPSocket();
 
   UDPSocket& operator=(const UDPSocket& other) = delete;
-  UDPSocket& operator=(const UDPSocket&& other) = delete;
+  UDPSocket& operator=(UDPSocket&& other) noexcept;
 
-  /* it's up to the user to make sure that the buffer has enough space */
-  void send(const uint8_t data[], size_t size);
-  size_t recv(uint8_t data[], size_t size);
-  size_t recv_connect(uint8_t data[], size_t size);
+  static UDPSocket bind(const std::string& port);
+
+  void sendto(const uint8_t data[], size_t size, const struct sockaddr* addr,
+              socklen_t addrlen) const;
+  size_t recvfrom(uint8_t data[], size_t size, struct sockaddr* addr,
+                  socklen_t* addrlen) const;
+
+  void register_connection(UDPConnection& conn);
 
  private:
+  explicit UDPSocket(int fd);
   int sockfd;
 };
 

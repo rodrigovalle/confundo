@@ -19,10 +19,14 @@ int main(int argc, char* argv[])
     return EXIT_FAILURE;
   }
 
+  std::string hostname{argv[1]};
+  std::string port{argv[2]};
+  std::string filename{argv[3]};
+
   try {
-    ConfundoSocket sock(argv[1], argv[2]);
-    std::cout << "handshake successful" << std::endl;
-    sock.send_all(test);
+    UDPSocket udpsock = UDPSocket::bind("0");
+    ConfundoSocket cfsock = ConfundoSocket::connect(udpsock, hostname, port);
+    cfsock.send_all(test);
     return EXIT_SUCCESS;
   } catch (std::runtime_error& e) {
     std::cerr << "ERROR: " << e.what() << std::endl;
