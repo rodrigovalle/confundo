@@ -1,5 +1,6 @@
 #include "cfp.hpp"
 #include "udpsocket.hpp"
+#include "udpmux.hpp"
 
 #include <cstdlib>  // EXIT_*
 #include <iostream> // std::cout, std::cerr
@@ -19,20 +20,20 @@ int main(int argc, char* argv[])
   try {
     uint8_t data[MAXPACKET];
     size_t size;
-    struct sockaddr addr;
-    socklen_t addrlen;
+    struct sockaddr_in addr;
     uint64_t id = 1;
 
     UDPSocket udpsock = UDPSocket::bind(port);
     UDPMux muxer{udpsock};
 
     while (true) {
-      size = udpsock.recvfrom(data, MAXPACKET, &addr, &addrlen);
+      size = udpsock.recvfrom(data, MAXPACKET, &addr);
       try {
         muxer.deliver(&addr, data, size);
       } catch (std::out_of_range& e) {
         protocol.emplace_back(muxer, id);
-        muxer.connect(&protocol.back(), &addr, addrlen);
+        muxer.connect(&protocol.back(), &addr);
+        muxer.deliver(&addr, data, size);
       }
       id++;
     }

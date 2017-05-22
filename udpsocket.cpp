@@ -64,20 +64,23 @@ UDPSocket::~UDPSocket() {
 }
 
 void UDPSocket::sendto(const uint8_t data[], size_t size,
-                       const struct sockaddr* addr, socklen_t addrlen) const {
+                       const struct sockaddr_in* addr) const {
   /* UDP send will either succeed completely, or fail
    * see: http://stackoverflow.com/questions/43746020 */
-  if (::sendto(sockfd, data, size, 0, addr, addrlen) == -1) {
-    throw std::runtime_error{mkerrorstr("send")};
+  if (::sendto(sockfd, data, size, 0, reinterpret_cast<const sockaddr*>(addr),
+               sizeof(sockaddr_in)) == -1) {
+    throw std::runtime_error{mkerrorstr("sendto")};
   }
 }
 
 size_t UDPSocket::recvfrom(uint8_t data[], size_t size,
-                           struct sockaddr* addr, socklen_t* addrlen) const {
+                           struct sockaddr_in* addr) const {
   ssize_t recv_b;
+  socklen_t len = sizeof(struct sockaddr_in);
 
-  if ((recv_b = ::recvfrom(sockfd, data, size, 0, addr, addrlen)) == -1) {
-    throw std::runtime_error{mkerrorstr("recv")};
+  if ((recv_b = ::recvfrom(sockfd, data, size, 0,
+                           reinterpret_cast<sockaddr*>(addr), &len)) == -1) {
+    throw std::runtime_error{mkerrorstr("recvfrom")};
   }
 
   return recv_b;

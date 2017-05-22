@@ -26,6 +26,9 @@ int main(int argc, char* argv[])
   std::string filename{argv[3]};
 
   try {
+    uint8_t data[MAXPACKET];
+    struct sockaddr_in addr;
+    size_t size;
     UDPSocket udpsock = UDPSocket::bind("0");
     UDPMux mux{udpsock};
     CFP cfp{mux, hostname, port};
@@ -33,6 +36,15 @@ int main(int argc, char* argv[])
     std::array<uint8_t, 512> test;
     test.fill('X');
     cfp.send(test);
+
+    while (true) {
+      size = udpsock.recvfrom(data, MAXPACKET, &addr);
+      try {
+        mux.deliver(&addr, data, size);
+      } catch (std::out_of_range& e) {
+        std::cerr << "recieved packet not from server" << std::endl;
+      }
+    }
 
     return EXIT_SUCCESS;
   } catch (std::runtime_error& e) {

@@ -11,8 +11,8 @@
 UDPMux::UDPMux(const UDPSocket& udpsock) : sock{udpsock} {}
 UDPMux::~UDPMux() {}
 
-void UDPMux::connect(CFP* proto, sockaddr* addr, socklen_t addrlen) {
-  mux.insert({proto, {*addr, addrlen}});
+void UDPMux::connect(CFP* proto, sockaddr_in* addr) {
+  mux.insert({proto, *addr});
   demux.insert({unpack_sockaddr(addr), proto});
 }
 
@@ -30,38 +30,28 @@ void UDPMux::connect(CFP* proto, const std::string& host,
     throw std::runtime_error{"getaddrinfo(): " + std::string(gai_strerror(e))};
   }
 
-  sockaddr addr = *(result->ai_addr);
-  socklen_t addrlen = result->ai_addrlen;
+  sockaddr_in addr = *reinterpret_cast<sockaddr_in*>(result->ai_addr);
   freeaddrinfo(result);
 
-  mux.insert({proto, {addr, addrlen}});
+  mux.insert({proto, addr});
   demux.insert({unpack_sockaddr(&addr), proto});
 }
 
 void UDPMux::send(CFP* proto, const uint8_t data[], size_t size) const {
-  auto addrpair = mux.at(proto);
-  sock.sendto(data, size, &std::get<0>(addrpair), std::get<1>(addrpair));
+  sock.sendto(data, size, &mux.at(proto));
 }
 
-void UDPMux::deliver(const sockaddr* addr, uint8_t data[], size_t size) const {
+void UDPMux::deliver(const sockaddr_in* addr, uint8_t data[], size_t size) const {
   CFP* proto = demux.at(unpack_sockaddr(addr));
   proto->event(data, size);
 }
 
-std::pair<uint16_t, uint64_t> UDPMux::unpack_sockaddr(const sockaddr* addr) const {
+std::pair<uint32_t, uint16_t> UDPMux::unpack_sockaddr(const sockaddr_in* addr) const {
   uint16_t port;
   uint32_t ipaddr;
-  const sockaddr_in* addr_in;
 
-  switch (addr->sa_family) {
-    case AF_INET:
-      addr_in = reinterpret_cast<const sockaddr_in*>(addr);
-      port = addr_in->sin_port;
-      ipaddr = addr_in->sin_addr.s_addr;
-      return std::make_pair(port, ipaddr);
+  port = ntohs(addr->sin_port);
+  ipaddr = ntohl(addr->sin_addr.s_addr);
 
-    case AF_INET6:
-    default:
-      throw std::runtime_error{"this server doesn't support IPV6"};
-  }
+  return std::make_pair(ipaddr, port);
 }

@@ -15,10 +15,8 @@ class UDPSocket {
 
   static UDPSocket bind(const std::string& port);
 
-  void sendto(const uint8_t data[], size_t size, const struct sockaddr* addr,
-              socklen_t addrlen) const;
-  size_t recvfrom(uint8_t data[], size_t size, struct sockaddr* addr,
-                  socklen_t* addrlen) const;
+  void sendto(const uint8_t data[], size_t size, const struct sockaddr_in* addr) const;
+  size_t recvfrom(uint8_t data[], size_t size, struct sockaddr_in* addr) const;
 
  private:
   explicit UDPSocket(int fd);
