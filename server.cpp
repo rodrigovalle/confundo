@@ -31,7 +31,7 @@ int main(int argc, char* argv[])
       try {
         muxer.deliver(&addr, data, size);
       } catch (std::out_of_range& e) {
-        protocol.emplace_back(muxer, LISTEN, id);
+        protocol.emplace_back(muxer, id);
         muxer.connect(&protocol.back(), &addr, addrlen);
       }
       id++;

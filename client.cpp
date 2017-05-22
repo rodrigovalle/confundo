@@ -28,9 +28,8 @@ int main(int argc, char* argv[])
   try {
     UDPSocket udpsock = UDPSocket::bind("0");
     UDPMux mux{udpsock};
-    CFP cfp{mux, SYN_SENT, 0};
+    CFP cfp{mux, hostname, port};
 
-    mux.connect(&cfp, hostname, port);
     std::array<uint8_t, 512> test;
     test.fill('X');
     cfp.send(test);

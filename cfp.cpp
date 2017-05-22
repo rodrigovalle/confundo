@@ -26,12 +26,19 @@ static void net_to_host(struct cf_header* hdr) {
   hdr->flgs = ntohs(hdr->flgs);
 }
 
-CFP::CFP(const UDPMux& udpmux, cf_state start, uint16_t id)
-    : st{start}, snd_una{0}, conn_id{id}, cwnd{CWNDINIT},
+// server constructor (is not connected at start, must connect yourself)
+CFP::CFP(UDPMux& udpmux, uint16_t id)
+    : st{LISTEN}, snd_una{0}, conn_id{id}, cwnd{CWNDINIT},
       ssthresh{SSTHRESHINIT}, mux{udpmux} {
-  if (start == SYN_SENT) {
-    send_syn();
-  }
+}
+
+// client constructor (automatically connects)
+CFP::CFP(UDPMux& udpmux, const std::string& host, const std::string& port)
+  : st{SYN_SENT}, snd_una{0}, conn_id{0}, cwnd{CWNDINIT},
+    ssthresh{SSTHRESHINIT}, mux{udpmux} {
+
+  mux.connect(this, host, port);
+  send_syn();
 }
 
 CFP::~CFP() {}

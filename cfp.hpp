@@ -52,7 +52,8 @@ struct cf_packet {
 
 class CFP {
  public:
-  CFP(const UDPMux& udpmux, cf_state start, uint16_t id);
+  CFP(UDPMux& udpmux, uint16_t id); // server
+  CFP(UDPMux& udpmux, const std::string& host, const std::string& port);
   ~CFP();
 
   void event(uint8_t data[], size_t size);
@@ -79,7 +80,7 @@ class CFP {
   uint32_t cwnd;
   uint32_t ssthresh;
 
-  const UDPMux& mux;
+  UDPMux& mux;
 
   std::queue<std::array<uint8_t, 512>> presnd_queue;
 };
