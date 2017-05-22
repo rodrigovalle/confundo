@@ -1,7 +1,7 @@
 #include "util.hpp"
+#include "cfp.hpp"
 
-void report(op_T op, const struct cf_header* hdr, uint32_t cwnd,
-            uint32_t ssthresh) {
+void report(op_T op, const cf_header* hdr, uint32_t cwnd, uint32_t ssthresh) {
   switch (op) {
     case SEND:
       std::cout << "SEND ";

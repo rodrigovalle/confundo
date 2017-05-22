@@ -1,4 +1,6 @@
-#include "confundosocket.hpp"
+#include "cfp.hpp"
+#include "udpmux.hpp"
+#include "udpsocket.hpp"
 
 #include <cstdlib>  // EXIT_*
 #include <iostream> // std::cout, std::cerr
@@ -25,8 +27,14 @@ int main(int argc, char* argv[])
 
   try {
     UDPSocket udpsock = UDPSocket::bind("0");
-    ConfundoSocket cfsock = ConfundoSocket::connect(udpsock, hostname, port);
-    cfsock.send_all(test);
+    UDPMux mux{udpsock};
+    CFP cfp{mux, SYN_SENT, 0};
+
+    mux.connect(&cfp, hostname, port);
+    std::array<uint8_t, 512> test;
+    test.fill('X');
+    cfp.send(test);
+
     return EXIT_SUCCESS;
   } catch (std::runtime_error& e) {
     std::cerr << "ERROR: " << e.what() << std::endl;

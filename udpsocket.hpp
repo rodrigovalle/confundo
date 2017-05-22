@@ -1,10 +1,8 @@
-#ifndef UDPSOCKET_HPP
-#define UDPSOCKET_HPP
+#ifndef _UDPSOCKET_HPP
+#define _UDPSOCKET_HPP
 
 #include <string>
 #include <sys/socket.h>
-
-class UDPConnection;
 
 class UDPSocket {
  public:
@@ -22,11 +20,9 @@ class UDPSocket {
   size_t recvfrom(uint8_t data[], size_t size, struct sockaddr* addr,
                   socklen_t* addrlen) const;
 
-  void register_connection(UDPConnection& conn);
-
  private:
   explicit UDPSocket(int fd);
   int sockfd;
 };
 
-#endif // UDPSOCKET_HPP
+#endif // _UDPSOCKET_HPP
