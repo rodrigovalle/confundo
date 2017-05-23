@@ -8,6 +8,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <unistd.h>
 #include <utility>
 
 // convert to network byte order
@@ -27,154 +28,277 @@ static void net_to_host(struct cf_header* hdr) {
 }
 
 // server constructor (is not connected at start, must connect yourself)
-CFP::CFP(UDPMux& udpmux, uint16_t id)
-    : st{LISTEN}, snd_una{0}, conn_id{id}, cwnd{CWNDINIT},
-      ssthresh{SSTHRESHINIT}, mux{udpmux} {
-}
+CFP::CFP(UDPMux& udpmux, uint16_t id, const std::string& directory)
+    : st{LISTEN}, conn_id{id}, cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT},
+      mux{udpmux}, ofile{directory + std::to_string(id) + ".file"} {}
 
 // client constructor (automatically connects)
-CFP::CFP(UDPMux& udpmux, const std::string& host, const std::string& port)
-  : st{SYN_SENT}, snd_una{0}, conn_id{0}, cwnd{CWNDINIT},
-    ssthresh{SSTHRESHINIT}, mux{udpmux} {
-
+CFP::CFP(UDPMux& udpmux, const std::string& host, const std::string& port,
+         std::array<uint8_t, 512> first_payload)
+  : st{SYN_SENT}, conn_id{0}, cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT},
+    mux{udpmux} {
   mux.connect(this, host, port);
+  first_payload = first_payload;
   send_syn();
 }
+
+CFP::CFP(CFP&& o) : st{o.st}, snd_nxt{o.snd_nxt}, rcv_nxt{o.rcv_nxt},
+    conn_id{o.conn_id}, una_buf{o.una_buf}, cwnd{o.cwnd}, ssthresh{o.ssthresh},
+    mux{o.mux}, ofile{std::move(o.ofile)}, first_payload{o.first_payload} {}
 
 CFP::~CFP() {}
 
 void CFP::event(uint8_t data[], size_t size) {
-  struct cf_header* rx_hdr;
   struct cf_packet* pkt = reinterpret_cast<struct cf_packet*>(data);
   net_to_host(&pkt->hdr);
-  report(RECV, &pkt->hdr, 0, 0);
+  report(RECV, &pkt->hdr, cwnd, ssthresh);
 
   switch (st) {
     case LISTEN:
-      if (!(pkt->hdr.syn_f)) {
-        // refuse the connection
-        // break;
-        throw std::runtime_error("received non-syn packet");
-      }
+      send_synack(&pkt->hdr);
       st = SYN_RECEIVED;
-      send_synack(pkt, size);
       break;
 
     case SYN_SENT:
-      rx_hdr = &pkt->hdr;
-      if (!(rx_hdr->syn_f && rx_hdr->ack_f && rx_hdr->ack == snd_nxt)) {
-        // break;
-        throw std::runtime_error("server did not respond with syn-ack");
-      }
+      send_ack_payload(&pkt->hdr);
       st = ESTABLISHED;
-      send_ack_payload(pkt, size);
       break;
 
     case SYN_RECEIVED:
-      rx_hdr = &pkt->hdr;
-      if (!(rx_hdr->ack_f && rx_hdr->ack == rcv_nxt)) {
-        // break;
-        throw std::runtime_error("client did not respond with ack");
+      if (!handle_ack(&pkt->hdr)) {
+        report(DROP, &pkt->hdr, 0, 0);
+        break;
+      }
+      if (!check_conn(&pkt->hdr)) {
+        report(DROP, &pkt->hdr, 0, 0);
+        break;
       }
       st = ESTABLISHED;
-      rx_hdr->ack = false;
+      handle_payload(pkt, size);
+      break;
 
     case ESTABLISHED:
-      // start sending messages from userspace
-      handle_recv(pkt, size);
+      if (!check_conn(&pkt->hdr)) {
+        report(DROP, &pkt->hdr, 0, 0);
+        break;
+      }
+      handle_ack(&pkt->hdr);
+      handle_payload(pkt, size);
+      handle_fin(&pkt->hdr);
       break;
 
-    case FIN_WAIT_1:
+    case ACK_ALL:
+      handle_ack(&pkt->hdr);
       break;
-    case FIN_WAIT_2:
+
+    case FIN_WAIT:
+      // client sent fin, expects ACK
+      if (!handle_ack(&pkt->hdr)) {
+        report(DROP, &pkt->hdr, 0, 0);
+        break;
+      }
+      st = TIME_WAIT;
       break;
-    case CLOSE_WAIT:
-      break;
-    case CLOSING:
-      break;
+
     case LAST_ACK:
+      // server sent fin, expects ACK
+      if (!handle_ack(&pkt->hdr)) {
+        report(DROP, &pkt->hdr, 0, 0);
+        break;
+      }
+      st = CLOSED;
+      ofile.close(); // TODO: kind of hacky
       break;
+
     case TIME_WAIT:
+      // TODO: timeout
+      // client responds to all FINs from server with ACKs until timeout (2s)
+      if (!check_conn(&pkt->hdr)) {
+        report(DROP, &pkt->hdr, 0, 0);
+        break;
+      }
+      if (pkt->hdr.fin_f) {
+        send_ack(rcv_nxt);
+      }
       break;
+
     case CLOSED:
+      report(DROP, &pkt->hdr, 0, 0);
       break;
   }
 }
 
-void CFP::send(std::array<uint8_t, 512>& data) {
-  presnd_queue.emplace(data);
+bool CFP::send(std::array<uint8_t, 512>& data) {
+  struct cf_header tx_hdr = {};
+  tx_hdr.seq = snd_nxt;
+  return send_packet(&tx_hdr, data.data(), data.size());
 }
 
-void CFP::close() {}
+void CFP::close() {
+  // set closing state so we send fin packet after all ACKs have come in
+  st = ACK_ALL;
+}
 
-// client initiates connection
-// TODO: timeout
+// client sends syn
 void CFP::send_syn() {
   struct cf_header tx_hdr = {};
 
-  snd_nxt = CLIENTSYN + 1;
+  snd_nxt = CLIENTISN + 1;
+  snd_una = CLIENTISN + 1;
 
   // send syn
   tx_hdr.syn_f = true;
-  tx_hdr.seq = CLIENTSYN;
+  tx_hdr.seq = CLIENTISN;
   send_packet(&tx_hdr, nullptr, 0);
 }
 
-// server sends a synack in response to client's syn
-void CFP::send_synack(struct cf_packet* pkt, size_t size) {
-  struct cf_header* rx_hdr = &pkt->hdr; // ignore payload
+// server recieves syn
+// sends synack in response
+void CFP::send_synack(struct cf_header* rx_hdr) { // ignore payload
   struct cf_header tx_hdr = {};
 
+  if (!(rx_hdr->syn_f)) {
+    // refuse the connection
+    report(DROP, rx_hdr, 0, 0);
+  }
+
   rcv_nxt = rx_hdr->seq + 1;
-  snd_nxt = SERVERSYN + 1;
+  snd_nxt = SERVERISN + 1;
+  snd_una = SERVERISN + 1;
 
   // send syn-ack
   tx_hdr.syn_f = true;
   tx_hdr.ack_f = true;
-  tx_hdr.seq = SERVERSYN;
+  tx_hdr.seq = SERVERISN;
   tx_hdr.ack = rcv_nxt;
   tx_hdr.conn = conn_id;
   send_packet(&tx_hdr, nullptr, 0);
 }
 
-// client sends first ACK with payload
-void CFP::send_ack_payload(struct cf_packet* pkt, size_t size) {
-  struct cf_header* rx_hdr = &pkt->hdr;
+// client recieves the server's syn ack
+// responds with an ACK packet with payload
+void CFP::send_ack_payload(struct cf_header* rx_hdr) {
   struct cf_header tx_hdr = {};
+
+  if (!(rx_hdr->syn_f && rx_hdr->ack_f && rx_hdr->ack == snd_nxt)) {
+    // break;
+    report(DROP, rx_hdr, 0, 0);
+  }
 
   conn_id = rx_hdr->conn;
   rcv_nxt = rx_hdr->seq + 1;
 
   tx_hdr.ack_f = true;
-  tx_hdr.seq = snd_nxt;
   tx_hdr.ack = rcv_nxt;
+  tx_hdr.seq = snd_nxt;
   tx_hdr.conn = conn_id;
 
-  std::array<uint8_t, 512> payload = presnd_queue.front();
-  presnd_queue.pop();
-  send_packet(&tx_hdr, payload.data(), payload.size());
+  send_packet(&tx_hdr, first_payload.data(), first_payload.size());
 }
 
-void CFP::handle_recv(struct cf_packet* pkt, size_t size) {
-  struct cf_header* hdr = &pkt->hdr;
-  if (hdr->ack_f && hdr->ack >= snd_una) {
-    // XXX
+bool CFP::check_conn(struct cf_header* rx_hdr) {
+  return rx_hdr->conn == conn_id;
+}
+
+// peer has sent a packet, check it for ack
+bool CFP::handle_ack(struct cf_header* rx_hdr) {
+  if (rx_hdr->ack_f) {
+    if (rx_hdr->ack > snd_una) {
+      snd_una = rx_hdr->ack;
+      clean_una_buf();
+    }
+
+    if (cwnd < ssthresh) {
+      cwnd += PAYLOAD;
+    } else if (cwnd >= ssthresh) {
+      cwnd += PAYLOAD*PAYLOAD/cwnd;
+    }
+
+    if (st == ACK_ALL && snd_una == snd_nxt) {
+      struct cf_header tx_hdr = {};
+      tx_hdr.fin_f = true;
+      tx_hdr.seq = snd_nxt;
+      tx_hdr.conn = conn_id;
+      send_packet(&tx_hdr, nullptr, 0);
+      
+      st = FIN_WAIT;
+    }
+    
+    return true;
   }
-  if (hdr->seq == rcv_nxt) {
-    // XXX
+  return false;
+}
+
+void CFP::handle_payload(struct cf_packet* pkt, size_t pktsize) {
+  if (pkt->hdr.seq != rcv_nxt) { // wasn't the packet we were expecting :/
+    send_ack(rcv_nxt);
+  } else if (pktsize > sizeof(struct cf_header)) { // received in order packet
+    rcv_nxt += (pktsize - sizeof(struct cf_header));
+    send_ack(rcv_nxt);
+    if (ofile.is_open()) {
+      ofile.write(reinterpret_cast<char*>(pkt->payload),
+                  pktsize - sizeof(struct cf_header));
+    }
+  }
+}
+
+void CFP::handle_fin(struct cf_header* rx_hdr) {
+  if (rx_hdr->fin_f) {
+    rcv_nxt += 1;
+    send_ack(rcv_nxt);
+
+    // send fin
+    struct cf_header tx_hdr = {};
+    tx_hdr.fin_f = true;
+    tx_hdr.seq = snd_nxt;
+    send_packet(&tx_hdr, nullptr, 0);
+
+    st = LAST_ACK;
   }
 }
 
 // TODO: retry on timeout
-void CFP::send_packet(struct cf_header* hdr, uint8_t* payload, size_t size) {
+bool CFP::send_packet(struct cf_header* hdr, uint8_t* payload, size_t plsize) {
   struct cf_packet pkt = {};
   pkt.hdr = *hdr;
-  memcpy(&pkt.payload, payload, size);
+  pkt.hdr.conn = conn_id;
+  memcpy(&pkt.payload, payload, plsize);
 
-  report(SEND, &pkt.hdr, 0, 0); // TODO: fill in cwnd and ssthresh
+  // check no. of outstanding packets + the one we want to send
+  if (!((snd_nxt - snd_una) + plsize <= cwnd)) {
+    // must wait until the window has room
+    return false;
+  }
+
+  una_buf.push_back(pkt);
   host_to_net(&pkt.hdr);
-  mux.send(this, reinterpret_cast<uint8_t*>(&pkt), sizeof(struct cf_header) + size);
+  mux.send(this, reinterpret_cast<uint8_t*>(&pkt), sizeof(struct cf_header) + plsize);
+  report(SEND, hdr, cwnd, ssthresh);
 
-  snd_nxt += size;
-  // XXX: snd_una = 
+  snd_nxt += plsize;
+
+  return true;
+}
+
+void CFP::send_ack(uint32_t ack) {
+  struct cf_packet pkt = {};
+
+  pkt.hdr.ack_f = true;
+  pkt.hdr.ack = ack;
+  pkt.hdr.seq = snd_nxt;
+  pkt.hdr.conn = conn_id;
+  report(SEND, &pkt.hdr, cwnd, ssthresh);
+  host_to_net(&pkt.hdr);
+
+  mux.send(this, reinterpret_cast<uint8_t*>(&pkt), sizeof(struct cf_header));
+}
+
+void CFP::clean_una_buf() {
+  for (auto pkt = una_buf.begin(); pkt < una_buf.end(); pkt++) {
+    if (pkt->hdr.seq < snd_una) {
+      una_buf.erase(pkt);
+    } else {
+      break;
+    }
+  }
 }

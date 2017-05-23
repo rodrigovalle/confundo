@@ -5,6 +5,7 @@
 #include <cstdlib>  // EXIT_*
 #include <iostream> // std::cout, std::cerr
 #include <string>   // std::string
+#include <fstream>
 
 static char test[] = "iLorem ipsum dolor sit amet, consectetur adipiscing "
   "elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut "
@@ -23,7 +24,7 @@ int main(int argc, char* argv[])
 
   std::string hostname{argv[1]};
   std::string port{argv[2]};
-  std::string filename{argv[3]};
+  std::ifstream file{argv[3]};
 
   try {
     uint8_t data[MAXPACKET];
@@ -31,18 +32,27 @@ int main(int argc, char* argv[])
     size_t size;
     UDPSocket udpsock = UDPSocket::bind("0");
     UDPMux mux{udpsock};
-    CFP cfp{mux, hostname, port};
 
-    std::array<uint8_t, 512> test;
-    test.fill('X');
-    cfp.send(test);
+    std::array<uint8_t, 512> buf;
+    file.read(reinterpret_cast<char*>(buf.data()), 512);
+    CFP cfp{mux, hostname, port, buf};
 
     while (true) {
       size = udpsock.recvfrom(data, MAXPACKET, &addr);
       try {
         mux.deliver(&addr, data, size);
       } catch (std::out_of_range& e) {
-        std::cerr << "recieved packet not from server" << std::endl;
+        std::cerr << "received packet not from server" << std::endl;
+      }
+
+      if (!file.eof()) {
+        do {
+          file.read(reinterpret_cast<char*>(buf.data()), 512);
+        } while (cfp.send(buf) && !file.eof());
+
+        if (file.eof()) {
+          cfp.close();
+        }
       }
     }
 

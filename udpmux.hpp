@@ -14,6 +14,7 @@ struct cf_packet;
 class UDPMux {
  public:
   UDPMux(const UDPSocket& udpsock);
+  UDPMux(UDPMux&& other) noexcept = default;
   ~UDPMux();
 
   void connect(CFP* proto, sockaddr_in* addr);

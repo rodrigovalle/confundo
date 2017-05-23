@@ -17,6 +17,10 @@ int main(int argc, char* argv[])
   std::string filedir{argv[2]};
   std::vector<CFP> protocol;
 
+  if (filedir.back() != '/') {
+    filedir += '/';
+  }
+
   try {
     uint8_t data[MAXPACKET];
     size_t size;
@@ -31,11 +35,11 @@ int main(int argc, char* argv[])
       try {
         muxer.deliver(&addr, data, size);
       } catch (std::out_of_range& e) {
-        protocol.emplace_back(muxer, id);
+        protocol.emplace_back(muxer, id, filedir);
         muxer.connect(&protocol.back(), &addr);
         muxer.deliver(&addr, data, size);
+        id++;
       }
-      id++;
     }
 
     return EXIT_SUCCESS;

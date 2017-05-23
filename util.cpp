@@ -14,11 +14,14 @@ void report(op_T op, const cf_header* hdr, uint32_t cwnd, uint32_t ssthresh) {
       break;
   }
 
-  std::cout << hdr->seq << " ";
-  std::cout << hdr->ack << " ";
-  std::cout << hdr->conn << " ";
-  std::cout << cwnd << " ";
-  std::cout << ssthresh;
+    std::cout << hdr->seq << " ";
+    std::cout << hdr->ack << " ";
+    std::cout << hdr->conn << " ";
+
+  if (cwnd != 0 && ssthresh != 0) {
+    std::cout << cwnd << " ";
+    std::cout << ssthresh;
+  }
 
   if (hdr->ack_f) {
     std::cout << " ACK";
