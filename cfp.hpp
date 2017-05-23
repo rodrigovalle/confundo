@@ -66,6 +66,7 @@ class CFP {
  private:
   bool send_packet(struct cf_header* hdr, uint8_t* payload, size_t plsize);
   void send_ack(uint32_t ack);
+  void send_fin();
 
   void send_syn();
   void send_synack(struct cf_header* rx_hdr);

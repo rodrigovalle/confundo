@@ -88,6 +88,10 @@ void CFP::event(uint8_t data[], size_t size) {
 
     case ACK_ALL:
       handle_ack(&pkt->hdr);
+      if (snd_una == snd_nxt) {
+        send_fin();
+        st = FIN_WAIT;
+      }
       break;
 
     case FIN_WAIT:
@@ -101,12 +105,12 @@ void CFP::event(uint8_t data[], size_t size) {
 
     case LAST_ACK:
       // server sent fin, expects ACK
+      st = CLOSED;
+      ofile.close();
       if (!handle_ack(&pkt->hdr)) {
         report(DROP, &pkt->hdr, 0, 0);
         break;
       }
-      st = CLOSED;
-      ofile.close(); // TODO: kind of hacky
       break;
 
     case TIME_WAIT:
@@ -122,6 +126,7 @@ void CFP::event(uint8_t data[], size_t size) {
       break;
 
     case CLOSED:
+      // TODO: somehow inform the user that this connection has ended
       report(DROP, &pkt->hdr, 0, 0);
       break;
   }
@@ -134,8 +139,14 @@ bool CFP::send(PayloadT data) {
 }
 
 void CFP::close() {
-  // set closing state so we send fin packet after all ACKs have come in
-  st = ACK_ALL;
+  // check for unacked packets
+  // if so, wait for ACKs, if all have been ACKed, jump send FIN
+  if (snd_una == snd_nxt) {
+    send_fin();
+    st = FIN_WAIT;
+  } else {
+    st = ACK_ALL;
+  }
 }
 
 // TODO: retry on timeout
@@ -171,7 +182,16 @@ void CFP::send_ack(uint32_t ack) {
   report(SEND, &pkt.hdr, cwnd, ssthresh);
   host_to_net(&pkt.hdr);
 
+  // don't resend ACKs
   mux.send(this, reinterpret_cast<uint8_t*>(&pkt), sizeof(struct cf_header));
+}
+
+void CFP::send_fin() {
+  struct cf_header tx_hdr = {};
+  tx_hdr.fin_f = true;
+  tx_hdr.seq = snd_nxt;
+  tx_hdr.conn = conn_id;
+  send_packet(&tx_hdr, nullptr, 0); // send FIN and retransmit if necessary
 }
 
 // client sends syn
@@ -249,16 +269,6 @@ bool CFP::handle_ack(struct cf_header* rx_hdr) {
       cwnd += PAYLOAD*PAYLOAD/cwnd;
     }
 
-    if (st == ACK_ALL && snd_una == snd_nxt) {
-      struct cf_header tx_hdr = {};
-      tx_hdr.fin_f = true;
-      tx_hdr.seq = snd_nxt;
-      tx_hdr.conn = conn_id;
-      send_packet(&tx_hdr, nullptr, 0);
-      
-      st = FIN_WAIT;
-    }
-    
     return true;
   }
   return false;
@@ -270,10 +280,8 @@ void CFP::handle_payload(struct cf_packet* pkt, size_t pktsize) {
   } else if (pktsize > sizeof(struct cf_header)) { // received in order packet
     rcv_nxt += (pktsize - sizeof(struct cf_header));
     send_ack(rcv_nxt);
-    if (ofile.is_open()) {
-      ofile.write(reinterpret_cast<char*>(pkt->payload),
-                  pktsize - sizeof(struct cf_header));
-    }
+    ofile.write(reinterpret_cast<char*>(pkt->payload),
+                pktsize - sizeof(struct cf_header));
   }
 }
 
@@ -290,10 +298,6 @@ void CFP::handle_fin(struct cf_header* rx_hdr) {
 
     st = LAST_ACK;
   }
-}
-
-void CFP::set_first_payload(PayloadT buf) {
-  first_payload = buf;
 }
 
 void CFP::clean_una_buf() {

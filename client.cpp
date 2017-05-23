@@ -7,14 +7,6 @@
 #include <string>   // std::string
 #include <fstream>
 
-static char test[] = "iLorem ipsum dolor sit amet, consectetur adipiscing "
-  "elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut "
-  "enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut "
-  "aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in "
-  "voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint "
-  "occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit "
-  "anim id est laborum.";
-
 int main(int argc, char* argv[])
 {
   if (argc != 4) {
@@ -33,10 +25,18 @@ int main(int argc, char* argv[])
     UDPSocket udpsock = UDPSocket::bind("0");
     UDPMux mux{udpsock};
 
+    // read data for first packet
     PayloadT buf;
     file.read(reinterpret_cast<char*>(buf.first.data()), 512);
-    buf.second = file.gcount();
+    buf.second = file.gcount(); // set number of bytes read
+
     CFP cfp{mux, hostname, port, buf};
+
+    enum {
+      OK,
+      RETRY_LAST_SEND,
+      FILE_EOF
+    } sstate = OK;
 
     while (true) {
       size = udpsock.recvfrom(data, MAXPACKET, &addr);
@@ -46,14 +46,33 @@ int main(int argc, char* argv[])
         std::cerr << "received packet not from server" << std::endl;
       }
 
-      if (!file.eof()) {
-        do {
-          file.read(reinterpret_cast<char*>(buf.first.data()), 512);
-        } while (cfp.send(buf) && !file.eof());
+      // ugly state machine to deal with resending failed sends and file eof
+      switch (sstate) {
+        case RETRY_LAST_SEND:
+          if (!cfp.send(buf)) {
+            break; // failed to send, try again next time kiddo
+          } // else, fall to next case and send until we can't anymore
 
-        if (file.eof()) {
-          cfp.close();
-        }
+        case OK:
+          while (!file.eof()) {
+            file.read(reinterpret_cast<char*>(buf.first.data()), 512);
+            buf.second = file.gcount();
+
+            if (!cfp.send(buf)) {
+              sstate = RETRY_LAST_SEND;
+              break;
+            }
+          }
+
+          if (file.eof()) { // hit the end of the file
+            cfp.close();
+            sstate = FILE_EOF;
+          }
+          break;
+
+        case FILE_EOF:
+          // no more data to transmit, but continue delivering cfp packets
+          break;
       }
     }
     return EXIT_SUCCESS;
