@@ -1,6 +1,6 @@
 #include "cfp.hpp"
+#include "eventloop.hpp"
 #include "udpsocket.hpp"
-#include "udpmux.hpp"
 
 #include <cstdlib>  // EXIT_*
 #include <iostream> // std::cout, std::cerr
@@ -22,22 +22,17 @@ int main(int argc, char* argv[])
   }
 
   try {
-    uint8_t data[MAXPACKET];
-    size_t size;
-    struct sockaddr_in addr;
-    uint64_t id = 1;
+    uint16_t id = 1;
 
-    UDPSocket udpsock = UDPSocket::bind(port);
-    UDPMux muxer{udpsock};
+    EventLoop evloop(UDPSocket::bind(port));
 
     while (true) {
-      size = udpsock.recvfrom(data, MAXPACKET, &addr);
       try {
-        muxer.deliver(&addr, data, size);
-      } catch (std::out_of_range& e) {
-        protocol.emplace_back(muxer, id, filedir);
-        muxer.connect(&protocol.back(), &addr);
-        muxer.deliver(&addr, data, size);
+        evloop.run();
+      } catch (delivery_exception& ex) {
+        CFP new_cfp{evloop.getmux(), id, filedir};
+        new_cfp.recv_event(ex.data, ex.size);
+        evloop.add(std::move(new_cfp), ex.addr);
         id++;
       }
     }

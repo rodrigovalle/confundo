@@ -1,4 +1,9 @@
+#ifndef _TIMER_HPP
+#define _TIMER_HPP
+
+class EventLoop;
 class Timer {
+ friend EventLoop;
  public:
   Timer();
   Timer(Timer&& other) noexcept;
@@ -12,3 +17,5 @@ class Timer {
   int timerfd;
   double timeout;
 };
+
+#endif // _TIMER_HPP

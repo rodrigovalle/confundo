@@ -28,18 +28,15 @@ static void net_to_host(struct cf_header* hdr) {
 }
 
 // server constructor (is not connected at start, must connect yourself)
-CFP::CFP(UDPMux& udpmux, uint16_t id, const std::string& directory)
+CFP::CFP(const UDPMux& udpmux, uint16_t id, const std::string& directory)
     : st{LISTEN}, conn_id{id}, cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT},
       mux{udpmux}, ofile{directory + std::to_string(id) + ".file"} {}
 
 // client constructor (automatically connects)
-CFP::CFP(UDPMux& udpmux, const std::string& host, const std::string& port,
+CFP::CFP(const UDPMux& udpmux, const std::string& host, const std::string& port,
          PayloadT first_pl)
     : st{SYN_SENT}, conn_id{0}, cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT},
-      mux{udpmux}, first_payload{first_pl} {
-  mux.connect(this, host, port);
-  send_syn();
-}
+      mux{udpmux}, first_payload{first_pl} {}
 
 CFP::CFP(CFP&& o) : st{o.st}, snd_nxt{o.snd_nxt}, rcv_nxt{o.rcv_nxt},
     conn_id{o.conn_id}, una_buf{o.una_buf}, cwnd{o.cwnd}, ssthresh{o.ssthresh},
@@ -47,23 +44,26 @@ CFP::CFP(CFP&& o) : st{o.st}, snd_nxt{o.snd_nxt}, rcv_nxt{o.rcv_nxt},
 
 CFP::~CFP() {}
 
-void CFP::event(uint8_t data[], size_t size) {
+void CFP::recv_event(uint8_t data[], size_t size) {
   struct cf_packet* pkt = reinterpret_cast<struct cf_packet*>(data);
   net_to_host(&pkt->hdr);
   report(RECV, &pkt->hdr, cwnd, ssthresh);
 
   switch (st) {
     case LISTEN:
+      std::cerr << "LISTEN" << std::endl; // XXX: for debugging only
       send_synack(&pkt->hdr);
       st = SYN_RECEIVED;
       break;
 
     case SYN_SENT:
+      std::cerr << "SYN_SENT" << std::endl; // XXX: for debugging only
       send_ack_payload(&pkt->hdr);
       st = ESTABLISHED;
       break;
 
     case SYN_RECEIVED:
+      std::cerr << "SYN_RECEIVED" << std::endl; // XXX: for debugging only
       if (!handle_ack(&pkt->hdr)) {
         report(DROP, &pkt->hdr, 0, 0);
         break;
@@ -77,6 +77,7 @@ void CFP::event(uint8_t data[], size_t size) {
       break;
 
     case ESTABLISHED:
+      std::cerr << "ESTABLISHED" << std::endl; // XXX: for debugging only
       if (!check_conn(&pkt->hdr)) {
         report(DROP, &pkt->hdr, 0, 0);
         break;
@@ -87,6 +88,7 @@ void CFP::event(uint8_t data[], size_t size) {
       break;
 
     case ACK_ALL:
+      std::cerr << "ACK_ALL" << std::endl; // XXX: for debugging only
       handle_ack(&pkt->hdr);
       if (snd_una == snd_nxt) {
         send_fin();
@@ -95,6 +97,7 @@ void CFP::event(uint8_t data[], size_t size) {
       break;
 
     case FIN_WAIT:
+      std::cerr << "FIN_WAIT" << std::endl; // XXX: for debugging only
       // client sent fin, expects ACK
       if (!handle_ack(&pkt->hdr)) {
         report(DROP, &pkt->hdr, 0, 0);
@@ -104,6 +107,7 @@ void CFP::event(uint8_t data[], size_t size) {
       break;
 
     case LAST_ACK:
+      std::cerr << "LAST_ACK" << std::endl; // XXX: for debugging only
       // server sent fin, expects ACK
       st = CLOSED;
       ofile.close();
@@ -114,6 +118,7 @@ void CFP::event(uint8_t data[], size_t size) {
       break;
 
     case TIME_WAIT:
+      std::cerr << "TIME_WAIT" << std::endl; // XXX: for debugging only
       // TODO: timeout
       // client responds to all FINs from server with ACKs until timeout (2s)
       if (!check_conn(&pkt->hdr)) {
@@ -126,10 +131,19 @@ void CFP::event(uint8_t data[], size_t size) {
       break;
 
     case CLOSED:
+      std::cerr << "CLOSED" << std::endl; // XXX: for debugging only
       // TODO: somehow inform the user that this connection has ended
       report(DROP, &pkt->hdr, 0, 0);
       break;
   }
+}
+
+void CFP::timeout_event() {
+  // TODO: resend last packet
+}
+
+void CFP::start() {
+  send_syn();
 }
 
 bool CFP::send(PayloadT data) {
@@ -140,7 +154,7 @@ bool CFP::send(PayloadT data) {
 
 void CFP::close() {
   // check for unacked packets
-  // if so, wait for ACKs, if all have been ACKed, jump send FIN
+  // if so, wait for ACKs, if all have been ACKed, send FIN immediately
   if (snd_una == snd_nxt) {
     send_fin();
     st = FIN_WAIT;
@@ -268,6 +282,8 @@ bool CFP::handle_ack(struct cf_header* rx_hdr) {
     } else if (cwnd >= ssthresh) {
       cwnd += PAYLOAD*PAYLOAD/cwnd;
     }
+
+    rto_timer.set_timeout(RTO);
 
     return true;
   }

@@ -4,13 +4,15 @@
 #include <string>
 #include <sys/socket.h>
 
+class EventLoop;
 class UDPSocket {
+  friend EventLoop;
  public:
-  UDPSocket(const UDPSocket& other) = delete;
+  UDPSocket(UDPSocket& other) = delete;
   UDPSocket(UDPSocket&& other) noexcept;
   ~UDPSocket();
 
-  UDPSocket& operator=(const UDPSocket& other) = delete;
+  UDPSocket& operator=(UDPSocket& other) = delete;
   UDPSocket& operator=(UDPSocket&& other) noexcept;
 
   static UDPSocket bind(const std::string& port);

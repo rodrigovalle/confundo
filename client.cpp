@@ -3,9 +3,9 @@
 #include "udpsocket.hpp"
 
 #include <cstdlib>  // EXIT_*
+#include <fstream>
 #include <iostream> // std::cout, std::cerr
 #include <string>   // std::string
-#include <fstream>
 
 int main(int argc, char* argv[])
 {
@@ -18,10 +18,11 @@ int main(int argc, char* argv[])
   std::string port{argv[2]};
   std::ifstream file{argv[3]};
 
+  // XXX: in this order
+  //  - use util.hpp connect on host, port
+  //  - use EventLoop::add on cfp_object
+  //  - use cfp::start on cfp_object to send syn
   try {
-    uint8_t data[MAXPACKET];
-    struct sockaddr_in addr;
-    size_t size;
     UDPSocket udpsock = UDPSocket::bind("0");
     UDPMux mux{udpsock};
 

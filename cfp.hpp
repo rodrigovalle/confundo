@@ -1,8 +1,9 @@
 #ifndef _CONFUNDOSOCKET_HPP
 #define _CONFUNDOSOCKET_HPP
 
-#include "udpsocket.hpp"
+#include "timer.hpp"
 #include "udpmux.hpp"
+#include "udpsocket.hpp"
 
 #include <cstdint>
 #include <fstream>
@@ -15,9 +16,11 @@
 #define CLIENTISN    12345
 #define CWNDINIT     512
 #define SSTHRESHINIT 10000
+#define RTO          0.5
+#define FINWAITTIME  2
 
 enum cf_state {
-  LISTEN = 0,
+  LISTEN,
   SYN_SENT,
   SYN_RECEIVED,
   ESTABLISHED,
@@ -50,15 +53,20 @@ struct cf_packet {
 
 using PayloadT = std::pair<std::array<uint8_t, 512>, size_t>;
 
+class EventLoop;
 class CFP {
+ friend EventLoop;
  public:
-  CFP(UDPMux& udpmux, uint16_t id, const std::string& directory); // server
-  CFP(UDPMux& udpmux, const std::string& host, const std::string& port, // client
+  CFP(const UDPMux& udpmux, uint16_t id, const std::string& directory); // server
+  CFP(const UDPMux& udpmux, const std::string& host, const std::string& port, // client
       PayloadT first_pl);
   CFP(CFP&& o);
   ~CFP();
 
-  void event(uint8_t data[], size_t size);
+  void recv_event(uint8_t data[], size_t size);
+  void timeout_event(); // RTO went off
+  void disconnect_event(); // 
+  void start();
   bool send(PayloadT buf);
   void close();
   const struct sockaddr* getsockaddr();
@@ -90,10 +98,12 @@ class CFP {
   uint32_t cwnd;
   uint32_t ssthresh;
 
-  UDPMux& mux;
+  const UDPMux& mux;
   std::ofstream ofile;
 
   PayloadT first_payload;
+  Timer rto_timer;
+  Timer disconnect_timer;
 };
 
 #endif // _CONFUNDOSOCKET_HPP
