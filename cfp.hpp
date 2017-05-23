@@ -48,16 +48,18 @@ struct cf_packet {
   uint8_t payload[PAYLOAD];
 };
 
+using PayloadT = std::pair<std::array<uint8_t, 512>, size_t>;
+
 class CFP {
  public:
   CFP(UDPMux& udpmux, uint16_t id, const std::string& directory); // server
-  CFP(UDPMux& udpmux, const std::string& host, const std::string& port,
-      std::array<uint8_t, 512> first_payload); // client
+  CFP(UDPMux& udpmux, const std::string& host, const std::string& port, // client
+      PayloadT first_pl);
   CFP(CFP&& o);
   ~CFP();
 
   void event(uint8_t data[], size_t size);
-  bool send(std::array<uint8_t, 512>& data);
+  bool send(PayloadT buf);
   void close();
   const struct sockaddr* getsockaddr();
 
@@ -74,6 +76,7 @@ class CFP {
   void handle_payload(struct cf_packet* pkt, size_t pktsize);
   void handle_fin(struct cf_header* rx_hdr);
 
+  void set_first_payload(PayloadT buf);
   void clean_una_buf();
 
   cf_state st;
@@ -89,7 +92,7 @@ class CFP {
   UDPMux& mux;
   std::ofstream ofile;
 
-  std::array<uint8_t, 512> first_payload;
+  PayloadT first_payload;
 };
 
 #endif // _CONFUNDOSOCKET_HPP

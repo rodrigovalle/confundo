@@ -34,11 +34,10 @@ CFP::CFP(UDPMux& udpmux, uint16_t id, const std::string& directory)
 
 // client constructor (automatically connects)
 CFP::CFP(UDPMux& udpmux, const std::string& host, const std::string& port,
-         std::array<uint8_t, 512> first_payload)
-  : st{SYN_SENT}, conn_id{0}, cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT},
-    mux{udpmux} {
+         PayloadT first_pl)
+    : st{SYN_SENT}, conn_id{0}, cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT},
+      mux{udpmux}, first_payload{first_pl} {
   mux.connect(this, host, port);
-  first_payload = first_payload;
   send_syn();
 }
 
@@ -128,15 +127,51 @@ void CFP::event(uint8_t data[], size_t size) {
   }
 }
 
-bool CFP::send(std::array<uint8_t, 512>& data) {
+bool CFP::send(PayloadT data) {
   struct cf_header tx_hdr = {};
   tx_hdr.seq = snd_nxt;
-  return send_packet(&tx_hdr, data.data(), data.size());
+  return send_packet(&tx_hdr, data.first.data(), data.second);
 }
 
 void CFP::close() {
   // set closing state so we send fin packet after all ACKs have come in
   st = ACK_ALL;
+}
+
+// TODO: retry on timeout
+bool CFP::send_packet(struct cf_header* hdr, uint8_t* payload, size_t plsize) {
+  struct cf_packet pkt = {};
+  pkt.hdr = *hdr;
+  pkt.hdr.conn = conn_id;
+  memcpy(&pkt.payload, payload, plsize);
+
+  // check no. of outstanding packets + the one we want to send
+  if (!((snd_nxt - snd_una) + plsize <= cwnd)) {
+    // must wait until the window has room
+    return false;
+  }
+
+  una_buf.push_back(pkt);
+  host_to_net(&pkt.hdr);
+  mux.send(this, reinterpret_cast<uint8_t*>(&pkt), sizeof(struct cf_header) + plsize);
+  report(SEND, hdr, cwnd, ssthresh);
+
+  snd_nxt += plsize;
+
+  return true;
+}
+
+void CFP::send_ack(uint32_t ack) {
+  struct cf_packet pkt = {};
+
+  pkt.hdr.ack_f = true;
+  pkt.hdr.ack = ack;
+  pkt.hdr.seq = snd_nxt;
+  pkt.hdr.conn = conn_id;
+  report(SEND, &pkt.hdr, cwnd, ssthresh);
+  host_to_net(&pkt.hdr);
+
+  mux.send(this, reinterpret_cast<uint8_t*>(&pkt), sizeof(struct cf_header));
 }
 
 // client sends syn
@@ -193,7 +228,7 @@ void CFP::send_ack_payload(struct cf_header* rx_hdr) {
   tx_hdr.seq = snd_nxt;
   tx_hdr.conn = conn_id;
 
-  send_packet(&tx_hdr, first_payload.data(), first_payload.size());
+  send_packet(&tx_hdr, first_payload.first.data(), first_payload.second);
 }
 
 bool CFP::check_conn(struct cf_header* rx_hdr) {
@@ -257,40 +292,8 @@ void CFP::handle_fin(struct cf_header* rx_hdr) {
   }
 }
 
-// TODO: retry on timeout
-bool CFP::send_packet(struct cf_header* hdr, uint8_t* payload, size_t plsize) {
-  struct cf_packet pkt = {};
-  pkt.hdr = *hdr;
-  pkt.hdr.conn = conn_id;
-  memcpy(&pkt.payload, payload, plsize);
-
-  // check no. of outstanding packets + the one we want to send
-  if (!((snd_nxt - snd_una) + plsize <= cwnd)) {
-    // must wait until the window has room
-    return false;
-  }
-
-  una_buf.push_back(pkt);
-  host_to_net(&pkt.hdr);
-  mux.send(this, reinterpret_cast<uint8_t*>(&pkt), sizeof(struct cf_header) + plsize);
-  report(SEND, hdr, cwnd, ssthresh);
-
-  snd_nxt += plsize;
-
-  return true;
-}
-
-void CFP::send_ack(uint32_t ack) {
-  struct cf_packet pkt = {};
-
-  pkt.hdr.ack_f = true;
-  pkt.hdr.ack = ack;
-  pkt.hdr.seq = snd_nxt;
-  pkt.hdr.conn = conn_id;
-  report(SEND, &pkt.hdr, cwnd, ssthresh);
-  host_to_net(&pkt.hdr);
-
-  mux.send(this, reinterpret_cast<uint8_t*>(&pkt), sizeof(struct cf_header));
+void CFP::set_first_payload(PayloadT buf) {
+  first_payload = buf;
 }
 
 void CFP::clean_una_buf() {

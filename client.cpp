@@ -33,8 +33,9 @@ int main(int argc, char* argv[])
     UDPSocket udpsock = UDPSocket::bind("0");
     UDPMux mux{udpsock};
 
-    std::array<uint8_t, 512> buf;
-    file.read(reinterpret_cast<char*>(buf.data()), 512);
+    PayloadT buf;
+    file.read(reinterpret_cast<char*>(buf.first.data()), 512);
+    buf.second = file.gcount();
     CFP cfp{mux, hostname, port, buf};
 
     while (true) {
@@ -47,7 +48,7 @@ int main(int argc, char* argv[])
 
       if (!file.eof()) {
         do {
-          file.read(reinterpret_cast<char*>(buf.data()), 512);
+          file.read(reinterpret_cast<char*>(buf.first.data()), 512);
         } while (cfp.send(buf) && !file.eof());
 
         if (file.eof()) {
@@ -55,8 +56,8 @@ int main(int argc, char* argv[])
         }
       }
     }
-
     return EXIT_SUCCESS;
+
   } catch (std::runtime_error& e) {
     std::cerr << "ERROR: " << e.what() << std::endl;
     return EXIT_FAILURE;
