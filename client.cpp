@@ -1,6 +1,8 @@
 #include "cfp.hpp"
 #include "udpmux.hpp"
 #include "udpsocket.hpp"
+#include "util.hpp"
+#include "eventloop.hpp"
 
 #include <cstdlib>  // EXIT_*
 #include <fstream>
@@ -23,15 +25,18 @@ int main(int argc, char* argv[])
   //  - use EventLoop::add on cfp_object
   //  - use cfp::start on cfp_object to send syn
   try {
-    UDPSocket udpsock = UDPSocket::bind("0");
-    UDPMux mux{udpsock};
-
     // read data for first packet
     PayloadT buf;
     file.read(reinterpret_cast<char*>(buf.first.data()), 512);
     buf.second = file.gcount(); // set number of bytes read
 
-    CFP cfp{mux, hostname, port, buf};
+    // initialize event loop
+    sockaddr_in addr = getsockaddr(hostname, port);
+    EventLoop evloop{UDPSocket::bind("0")};
+
+    // add CFP object to eventloop and make it send syn by calling start()
+    CFP& cfp = evloop.add(CFP{evloop.getmux(), buf}, &addr);
+    cfp.start();
 
     enum {
       OK,
@@ -40,11 +45,10 @@ int main(int argc, char* argv[])
     } sstate = OK;
 
     while (true) {
-      size = udpsock.recvfrom(data, MAXPACKET, &addr);
       try {
-        mux.deliver(&addr, data, size);
-      } catch (std::out_of_range& e) {
-        std::cerr << "received packet not from server" << std::endl;
+        evloop.run();
+      } catch (delivery_exception& ex) {
+        throw std::runtime_error{"receieved packet that wasn't from the server"};
       }
 
       // ugly state machine to deal with resending failed sends and file eof
@@ -76,8 +80,9 @@ int main(int argc, char* argv[])
           break;
       }
     }
-    return EXIT_SUCCESS;
 
+  } catch (connection_closed_gracefully& e) {
+    return EXIT_SUCCESS;
   } catch (std::runtime_error& e) {
     std::cerr << "ERROR: " << e.what() << std::endl;
     return EXIT_FAILURE;

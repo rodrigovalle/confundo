@@ -18,6 +18,7 @@ class UDPMux {
   ~UDPMux();
 
   void connect(CFP* proto, sockaddr_in* addr);
+  void disconnect(CFP* proto);
 
   // returns 1 if couldn't find a CFP object to send message to
   // fills our addrout and addrlenout

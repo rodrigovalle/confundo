@@ -16,6 +16,24 @@ void UDPMux::connect(CFP* proto, sockaddr_in* addr) {
   demux.insert({unpack_sockaddr(addr), proto});
 }
 
+void UDPMux::disconnect(CFP* proto) {
+  auto addrpair = unpack_sockaddr(&mux[proto]);
+
+  for (auto i = mux.begin(); i != mux.end(); i++) {
+    if (i->first == proto) {
+      mux.erase(i);
+      break;
+    }
+  }
+
+  for (auto i = demux.begin(); i != demux.end(); i++) {
+    if (i->first.first == addrpair.first && i->first.second == addrpair.second) {
+      demux.erase(i);
+      break;
+    }
+  }
+}
+
 void UDPMux::send(CFP* proto, const uint8_t data[], size_t size) const {
   sock.sendto(data, size, &mux.at(proto));
 }

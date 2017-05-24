@@ -38,7 +38,8 @@ class EventLoop {
   explicit EventLoop(UDPSocket&& udpsock);
   ~EventLoop();
   void run();
-  void add(CFP&& cfp, sockaddr_in* conn_to);
+  CFP& add(CFP&& cfp, sockaddr_in* conn_to);
+  void remove(CFP& cfp);
   const UDPMux& getmux();
 
  private:

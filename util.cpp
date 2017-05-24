@@ -7,7 +7,8 @@
 #include <sys/socket.h>
 #include <vector>
 
-void report(op_T op, const cf_header* hdr, uint32_t cwnd, uint32_t ssthresh) {
+void report(op_T op, const cf_header* hdr, uint32_t cwnd, uint32_t ssthresh,
+            bool duplicate) {
   switch (op) {
     case SEND:
       std::cout << "SEND ";
@@ -24,7 +25,7 @@ void report(op_T op, const cf_header* hdr, uint32_t cwnd, uint32_t ssthresh) {
     std::cout << hdr->ack << " ";
     std::cout << hdr->conn << " ";
 
-  if (cwnd != 0 && ssthresh != 0) {
+  if (cwnd != 0 || ssthresh != 0) {
     std::cout << cwnd << " ";
     std::cout << ssthresh;
   }
@@ -37,6 +38,9 @@ void report(op_T op, const cf_header* hdr, uint32_t cwnd, uint32_t ssthresh) {
   }
   if (hdr->fin_f) {
     std::cout << " FIN";
+  }
+  if (duplicate) {
+    std::cout << " DUP";
   }
   std::cout << std::endl;
 }
@@ -58,4 +62,20 @@ sockaddr_in getsockaddr(const std::string& host, const std::string& port) {
   freeaddrinfo(result);
 
   return addr;
+}
+
+// convert to network byte order
+void host_to_net(struct cf_header* hdr) {
+  hdr->seq = htonl(hdr->seq);
+  hdr->ack = htonl(hdr->ack);
+  hdr->conn = htons(hdr->conn);
+  hdr->flgs = htons(hdr->flgs);
+}
+
+// convert from network byte order
+void net_to_host(struct cf_header* hdr) {
+  hdr->seq = ntohl(hdr->seq);
+  hdr->ack = ntohl(hdr->ack);
+  hdr->conn = ntohs(hdr->conn);
+  hdr->flgs = ntohs(hdr->flgs);
 }

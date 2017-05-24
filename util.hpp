@@ -23,7 +23,11 @@ inline std::string mkerrorstr(const std::string& fn_name) {
 }
 
 /* reports a packet event to std::cout */
-void report(op_T op, const cf_header* hdr, uint32_t cwnd, uint32_t ssthresh);
+void report(op_T op, const cf_header* hdr, uint32_t cwnd, uint32_t ssthresh,
+            bool duplicate);
 sockaddr_in getsockaddr(const std::string& host, const std::string& port);
+
+void host_to_net(struct cf_header* hdr);
+void net_to_host(struct cf_header* hdr);
 
 #endif  // _UTIL_HPP

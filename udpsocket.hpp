@@ -6,7 +6,7 @@
 
 class EventLoop;
 class UDPSocket {
-  friend EventLoop;
+ friend EventLoop;
  public:
   UDPSocket(UDPSocket& other) = delete;
   UDPSocket(UDPSocket&& other) noexcept;

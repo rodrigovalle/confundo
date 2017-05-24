@@ -2,7 +2,7 @@ CXX=g++
 CXXOPTIMIZE= -O2
 CXXFLAGS= -g -Wall -pthread -std=c++11 $(CXXOPTIMIZE)
 USERID=104494120
-CLASSES=udpsocket.cpp udpmux.cpp cfp.cpp util.cpp timer.cpp
+CLASSES=udpsocket.cpp udpmux.cpp cfp.cpp util.cpp timer.cpp eventloop.cpp
 
 all: server client
 

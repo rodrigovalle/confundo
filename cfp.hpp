@@ -6,6 +6,7 @@
 #include "udpsocket.hpp"
 
 #include <cstdint>
+#include <deque>
 #include <fstream>
 #include <string>
 #include <sys/socket.h>
@@ -18,6 +19,7 @@
 #define SSTHRESHINIT 10000
 #define RTO          0.5
 #define FINWAITTIME  2
+#define DISCONNECTTO 10
 
 enum cf_state {
   LISTEN,
@@ -37,10 +39,10 @@ struct cf_header {
   uint16_t conn;       /* connection id                */
   union {
     struct {
-      uint16_t xxx: 13;    /* (unused, should be zero)     */
       uint16_t ack_f: 1;   /* acknowledge packet received  */
       uint16_t syn_f: 1;   /* synchronize sequence numbers */
       uint16_t fin_f: 1;   /* no more data from sender     */
+      uint16_t xxx: 13;    /* (unused, should be zero)     */
     };
     uint16_t flgs;
   };
@@ -53,13 +55,28 @@ struct cf_packet {
 
 using PayloadT = std::pair<std::array<uint8_t, 512>, size_t>;
 
+class connection_closed : public std::runtime_error {
+ public:
+  explicit connection_closed(CFP& which, const char* what)
+      : std::runtime_error(what), which{which} {};
+  CFP& which;
+};
+
+class connection_closed_gracefully : public connection_closed {
+ public:
+  explicit connection_closed_gracefully(CFP& which)
+      : connection_closed(which, "connection closed gracefully") {}
+};
+class connection_closed_ungracefully : public connection_closed {
+  using connection_closed::connection_closed;
+};
+
 class EventLoop;
 class CFP {
  friend EventLoop;
  public:
   CFP(const UDPMux& udpmux, uint16_t id, const std::string& directory); // server
-  CFP(const UDPMux& udpmux, const std::string& host, const std::string& port, // client
-      PayloadT first_pl);
+  CFP(const UDPMux& udpmux, PayloadT first_pl); // client
   CFP(CFP&& o);
   ~CFP();
 
@@ -72,7 +89,8 @@ class CFP {
   const struct sockaddr* getsockaddr();
 
  private:
-  bool send_packet(struct cf_header* hdr, uint8_t* payload, size_t plsize);
+  bool send_packet(const struct cf_header* hdr, uint8_t* payload, size_t plsize);
+  void send_packet_nocc(const struct cf_packet* pkt, size_t size, bool resnd);
   void send_ack(uint32_t ack);
   void send_fin();
 
@@ -88,18 +106,23 @@ class CFP {
   void set_first_payload(PayloadT buf);
   void clean_una_buf();
 
+  void terminate_gracefully();
+  void terminate_ungracefully(const std::string& why);
+
   cf_state st;
   uint32_t snd_nxt; // sequence no. of next byte in the stream
   uint32_t snd_una; // earliest sequence no. that has been sent but not acked
   uint32_t rcv_nxt; // sequence no. of next byte expected to be recvd from peer
   uint16_t conn_id;
-  std::vector<struct cf_packet> una_buf;
+  std::deque<std::pair<struct cf_packet, size_t>> una_buf;
 
   uint32_t cwnd;
   uint32_t ssthresh;
 
   const UDPMux& mux;
+
   std::ofstream ofile;
+  std::string directory;
 
   PayloadT first_payload;
   Timer rto_timer;

@@ -15,7 +15,6 @@ int main(int argc, char* argv[])
 
   std::string port{argv[1]};
   std::string filedir{argv[2]};
-  std::vector<CFP> protocol;
 
   if (filedir.back() != '/') {
     filedir += '/';
@@ -24,16 +23,17 @@ int main(int argc, char* argv[])
   try {
     uint16_t id = 1;
 
-    EventLoop evloop(UDPSocket::bind(port));
+    EventLoop evloop{UDPSocket::bind(port)};
 
     while (true) {
       try {
         evloop.run();
       } catch (delivery_exception& ex) {
         CFP new_cfp{evloop.getmux(), id, filedir};
-        new_cfp.recv_event(ex.data, ex.size);
-        evloop.add(std::move(new_cfp), ex.addr);
+        evloop.add(std::move(new_cfp), ex.addr).recv_event(ex.data, ex.size);
         id++;
+      } catch (connection_closed& e) {
+        evloop.remove(e.which);
       }
     }
 

@@ -11,7 +11,7 @@
 #include <vector>
 
 EventLoop::EventLoop(UDPSocket&& udpsock)
-    : sock{std::move(udpsock)}, mux{sock }{
+    : sock{std::move(udpsock)}, mux{sock} {
   if ((epfd = epoll_create1(0)) == -1) {
     throw std::runtime_error{mkerrorstr("epoll_create1")};
   }
@@ -20,7 +20,8 @@ EventLoop::EventLoop(UDPSocket&& udpsock)
   struct epoll_event ev = {};
   eventinfo.push_back({RECV_EV, nullptr});
   ev.events = EPOLLIN;
-  ev.data.ptr = &eventinfo.back();
+  ev.data.u32 = eventinfo.size() - 1;
+
   if (epoll_ctl(epfd, EPOLL_CTL_ADD, sock.sockfd, &ev) == -1) {
     throw std::runtime_error{mkerrorstr("epoll_ctl")};
   }
@@ -38,9 +39,12 @@ void EventLoop::run() {
   }
 
   for (int i = 0; i < ready; i++) {
-    EvInfo* ev_data = static_cast<EvInfo*>(events[i].data.ptr);
-    switch (ev_data->type) {
-      case RECV_EV: // ev_data->cfp_obj is NULL, don't dereference
+    uint32_t ev_idx = events[i].data.u32;
+    EvInfo evi = eventinfo[ev_idx];
+
+    switch (evi.type) {
+      case RECV_EV: // ev_ptr->cfp_obj is NULL, don't dereference
+        std::cerr << "calling recvfrom" << std::endl;
         size = sock.recvfrom(data, MAXPACKET, &addr);
         try {
           mux.deliver(&addr, data, size);
@@ -50,18 +54,22 @@ void EventLoop::run() {
         break;
 
       case RTO_EV:
-        static_cast<CFP*>(ev_data->cfp_obj)->timeout_event();
+        std::cerr << "calling timeout_event" << std::endl;
+        evi.cfp_obj->timeout_event();
         break;
 
       case DISCONNECTED_EV:
-        static_cast<CFP*>(ev_data->cfp_obj)->disconnect_event();
+        std::cerr << "calling disconnect_event" << std::endl;
+        evi.cfp_obj->disconnect_event();
+        break;
+
+      default:
         break;
     }
   }
-
 }
 
-void EventLoop::add(CFP&& cfp, sockaddr_in* conn_to) {
+CFP& EventLoop::add(CFP&& cfp, sockaddr_in* conn_to) {
   protocols.push_back(std::move(cfp));
 
   CFP& new_cfp = protocols.back();
@@ -72,7 +80,7 @@ void EventLoop::add(CFP&& cfp, sockaddr_in* conn_to) {
   // register retransmission timer with epoll
   eventinfo.push_back({RTO_EV, &new_cfp});
   ev.events = EPOLLIN;
-  ev.data.ptr = &eventinfo.back();
+  ev.data.u32 = eventinfo.size() - 1;
   if (epoll_ctl(epfd, EPOLL_CTL_ADD, new_cfp.rto_timer.timerfd, &ev) == -1) {
     throw std::runtime_error{mkerrorstr("epoll_ctl")};
   }
@@ -80,10 +88,42 @@ void EventLoop::add(CFP&& cfp, sockaddr_in* conn_to) {
   // register connection lost timer with epoll
   eventinfo.push_back({DISCONNECTED_EV, &new_cfp});
   ev.events = EPOLLIN;
-  ev.data.ptr = &eventinfo.back();
+  ev.data.u32 = eventinfo.size() - 1;
   if (epoll_ctl(epfd, EPOLL_CTL_ADD, new_cfp.disconnect_timer.timerfd, &ev) == -1) {
     throw std::runtime_error{mkerrorstr("epoll_ctl")};
   }
+
+  return protocols.back();
+}
+
+void EventLoop::remove(CFP& cfp) {
+  mux.disconnect(&cfp);
+
+  /* XXX: protocol vector just grows really big
+  for (auto i = protocols.begin(); i != protocols.end(); i++) {
+    if (cfp.conn_id == i->conn_id) {
+      protocols.erase(protocols.begin());
+      break;
+    }
+  }
+  */
+
+  if (epoll_ctl(epfd, EPOLL_CTL_DEL, cfp.rto_timer.timerfd, nullptr) == -1) {
+    throw std::runtime_error{mkerrorstr("epoll_ctl")};
+  }
+
+  if (epoll_ctl(epfd, EPOLL_CTL_DEL, cfp.disconnect_timer.timerfd, nullptr) == -1) {
+    throw std::runtime_error{mkerrorstr("epoll_ctl")};
+  }
+
+  /* XXX: eventinfo will just grow forever
+  for (auto i = eventinfo.begin(); i != eventinfo.end(); i++) {
+    if (i->cfp_obj == &cfp) {
+      eventinfo.erase(i);
+      break;
+    }
+  }
+  */
 }
 
 const UDPMux& EventLoop::getmux() {
