@@ -1,4 +1,4 @@
-confundo = Proto("confundo", "CS118 TCP")
+confundo = Proto("confundo", "CS118 Confundo Transport Protocol (CTP)")
 
 local f_seqno  = ProtoField.uint32("confundo.seqno",        "Sequence Number")
 local f_ack    = ProtoField.uint32("confundo.ack",          "ACK Number")
@@ -12,35 +12,24 @@ function confundo.dissector(tvb, pInfo, root) -- Tvb, Pinfo, TreeItem
       return 0
    end
 
-   local t = root:add(confundo, tvb(0,8))
+   local t = root:add(confundo, tvb(0,12))
    t:add(f_seqno, tvb(0,4))
    t:add(f_ack, tvb(4,4))
    t:add(f_id, tvb(8,2))
    local f = t:add(f_flags, tvb(10,2))
 
-   local flag = tvb(7,1):uint()
+   local flag = tvb(11,1):uint()
 
    if bit.band(flag, 1) ~= 0 then
-      f:add(tvb(7,2), "FIN")
+      f:add(tvb(11,1), "FIN")
    end
    if bit.band(flag, 2) ~= 0 then
-      f:add(tvb(7,2), "SYN")
+      f:add(tvb(11,1), "SYN")
    end
    if bit.band(flag, 4) ~= 0 then
-      f:add(tvb(7,2), "ACK")
+      f:add(tvb(11,1), "ACK")
    end
-
-   local flag = tvb(6,1):uint()
-   if bit.band(flag, 1) ~= 0 then
-      f:add(tvb(6,1), "xFIN")
-   end
-   if bit.band(flag, 2) ~= 0 then
-      f:add(tvb(6,1), "xSYN")
-   end
-   if bit.band(flag, 4) ~= 0 then
-      f:add(tvb(6,1), "xACK")
-   end
-   
+  
    pInfo.cols.protocol = "Confundo"
 end
 
