@@ -37,8 +37,10 @@ void CFP::recv_event(uint8_t data[], size_t size) {
   net_to_host(&pkt->hdr);
   report(RECV, &pkt->hdr, cwnd, ssthresh, false);
 
-  // reset disconnect timer to 10 seconds
-  disconnect_timer.set_timeout(DISCONNECTTO);
+  // reset disconnect timer to 10 seconds unless were waiting for connection close
+  if (st != TIME_WAIT) {
+    disconnect_timer.set_timeout(DISCONNECTTO);
+  }
 
   switch (st) {
     case LISTEN:
@@ -144,6 +146,8 @@ void CFP::timeout_event() {
   }
   // reset timeout
   rto_timer.set_timeout(RTO);
+  ssthresh = cwnd/2;
+  cwnd = CWNDINIT;
 }
 
 void CFP::disconnect_event() {
@@ -204,6 +208,7 @@ bool CFP::send_packet(const struct cf_header* hdr, uint8_t* payload, size_t plsi
   report(SEND, hdr, cwnd, ssthresh, false);
 
   snd_nxt += plsize;
+  snd_nxt %= 102400;
 
   return true;
 }
@@ -275,7 +280,6 @@ void CFP::send_synack(struct cf_header* rx_hdr) { // ignore payload
   // resend if necessary
   una_buf.emplace_back(tx_pkt, sizeof(cf_header));
   rto_timer.set_timeout(RTO);
-  disconnect_timer.set_timeout(DISCONNECTTO);
 
   send_packet_nocc(&tx_pkt, sizeof(cf_header), false);
 }
