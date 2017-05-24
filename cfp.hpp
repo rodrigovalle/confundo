@@ -10,7 +10,6 @@
 #include <fstream>
 #include <string>
 #include <sys/socket.h>
-#include <vector>
 
 #define PAYLOAD      512
 #define SERVERISN    4321
@@ -39,9 +38,9 @@ struct cf_header {
   uint16_t conn;       /* connection id                */
   union {
     struct {
-      uint16_t ack_f: 1;   /* acknowledge packet received  */
-      uint16_t syn_f: 1;   /* synchronize sequence numbers */
       uint16_t fin_f: 1;   /* no more data from sender     */
+      uint16_t syn_f: 1;   /* synchronize sequence numbers */
+      uint16_t ack_f: 1;   /* acknowledge packet received  */
       uint16_t xxx: 13;    /* (unused, should be zero)     */
     };
     uint16_t flgs;

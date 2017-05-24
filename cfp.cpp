@@ -42,26 +42,28 @@ void CFP::recv_event(uint8_t data[], size_t size) {
 
   switch (st) {
     case LISTEN:
-      std::cerr << "LISTEN" << std::endl; // XXX: for debugging only
+      //std::cerr << "LISTEN" << std::endl; // XXX: for debugging only
       if (!pkt->hdr.syn_f) {
         report(DROP, &pkt->hdr, 0, 0, false);
+        break;
       }
       send_synack(&pkt->hdr);
       st = SYN_RECEIVED;
       break;
 
     case SYN_SENT:
-      if (!(pkt->hdr.syn_f && pkt->hdr.ack_f && pkt->hdr.ack == snd_nxt)) {
+      if (!(pkt->hdr.syn_f && handle_ack(&pkt->hdr))) {
         report(DROP, &pkt->hdr, 0, 0, false);
+        break;
       }
 
-      std::cerr << "SYN_SENT" << std::endl; // XXX: for debugging only
+      //std::cerr << "SYN_SENT" << std::endl; // XXX: for debugging only
       send_ack_payload(&pkt->hdr);
       st = ESTABLISHED;
       break;
 
     case SYN_RECEIVED:
-      std::cerr << "SYN_RECEIVED" << std::endl; // XXX: for debugging only
+      //std::cerr << "SYN_RECEIVED" << std::endl; // XXX: for debugging only
       if (!handle_ack(&pkt->hdr)) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
@@ -75,7 +77,7 @@ void CFP::recv_event(uint8_t data[], size_t size) {
       break;
 
     case ESTABLISHED:
-      std::cerr << "ESTABLISHED" << std::endl; // XXX: for debugging only
+      //std::cerr << "ESTABLISHED" << std::endl; // XXX: for debugging only
       if (!check_conn(&pkt->hdr)) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
@@ -86,7 +88,7 @@ void CFP::recv_event(uint8_t data[], size_t size) {
       break;
 
     case ACK_ALL:
-      std::cerr << "ACK_ALL" << std::endl; // XXX: for debugging only
+      //std::cerr << "ACK_ALL" << std::endl; // XXX: for debugging only
       handle_ack(&pkt->hdr);
       if (snd_una == snd_nxt) {
         send_fin();
@@ -95,7 +97,7 @@ void CFP::recv_event(uint8_t data[], size_t size) {
       break;
 
     case FIN_WAIT:
-      std::cerr << "FIN_WAIT" << std::endl; // XXX: for debugging only
+      //std::cerr << "FIN_WAIT" << std::endl; // XXX: for debugging only
       // client sent fin, expects ACK
       if (!handle_ack(&pkt->hdr)) {
         report(DROP, &pkt->hdr, 0, 0, false);
@@ -106,7 +108,7 @@ void CFP::recv_event(uint8_t data[], size_t size) {
       break;
 
     case LAST_ACK:
-      std::cerr << "LAST_ACK" << std::endl; // XXX: for debugging only
+      //std::cerr << "LAST_ACK" << std::endl; // XXX: for debugging only
       // server sent fin, expects ACK
       if (!handle_ack(&pkt->hdr)) {
         report(DROP, &pkt->hdr, 0, 0, false);
@@ -117,7 +119,7 @@ void CFP::recv_event(uint8_t data[], size_t size) {
       break;
 
     case TIME_WAIT:
-      std::cerr << "TIME_WAIT" << std::endl; // XXX: for debugging only
+      //std::cerr << "TIME_WAIT" << std::endl; // XXX: for debugging only
       // client responds to all FINs from server with ACKs until timeout (2s)
       if (!check_conn(&pkt->hdr)) {
         report(DROP, &pkt->hdr, 0, 0, false);
@@ -129,7 +131,7 @@ void CFP::recv_event(uint8_t data[], size_t size) {
       break;
 
     case CLOSED:
-      std::cerr << "CLOSED" << std::endl; // XXX: for debugging only
+      //std::cerr << "CLOSED" << std::endl; // XXX: for debugging only
       report(DROP, &pkt->hdr, 0, 0, false);
       break;
   }
@@ -159,6 +161,7 @@ void CFP::disconnect_event() {
 
 void CFP::start() {
   send_syn();
+  disconnect_timer.set_timeout(DISCONNECTTO);
 }
 
 bool CFP::send(PayloadT data) {

@@ -44,7 +44,6 @@ void EventLoop::run() {
 
     switch (evi.type) {
       case RECV_EV: // ev_ptr->cfp_obj is NULL, don't dereference
-        std::cerr << "calling recvfrom" << std::endl;
         size = sock.recvfrom(data, MAXPACKET, &addr);
         try {
           mux.deliver(&addr, data, size);
@@ -54,12 +53,10 @@ void EventLoop::run() {
         break;
 
       case RTO_EV:
-        std::cerr << "calling timeout_event" << std::endl;
         evi.cfp_obj->timeout_event();
         break;
 
       case DISCONNECTED_EV:
-        std::cerr << "calling disconnect_event" << std::endl;
         evi.cfp_obj->disconnect_event();
         break;
 
