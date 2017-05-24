@@ -1,10 +1,17 @@
 #include "cfp.hpp"
 #include "eventloop.hpp"
 #include "udpsocket.hpp"
+#include "util.hpp"
 
+#include <csignal>
 #include <cstdlib>  // EXIT_*
 #include <iostream> // std::cout, std::cerr
 #include <string>   // std::string
+#include <unistd.h>
+
+static void handle_signals(int signum) {
+  _exit(EXIT_SUCCESS);
+}
 
 int main(int argc, char* argv[])
 {
@@ -12,6 +19,10 @@ int main(int argc, char* argv[])
     std::cout << "./server <PORT> <FILE-DIR>" << std::endl;
     return EXIT_FAILURE;
   }
+
+  signal(SIGINT, handle_signals);
+  signal(SIGQUIT, handle_signals);
+  signal(SIGTERM, handle_signals);
 
   std::string port{argv[1]};
   std::string filedir{argv[2]};

@@ -4,10 +4,16 @@
 #include "util.hpp"
 #include "eventloop.hpp"
 
+#include <csignal>
 #include <cstdlib>  // EXIT_*
 #include <fstream>
 #include <iostream> // std::cout, std::cerr
 #include <string>   // std::string
+#include <unistd.h>
+
+static void handle_signals(int signum) {
+  _exit(EXIT_SUCCESS);
+}
 
 int main(int argc, char* argv[])
 {
@@ -15,6 +21,10 @@ int main(int argc, char* argv[])
     std::cout << "./client <HOSTNAME-OR-IP> <PORT> <FILENAME>" << std::endl;
     return EXIT_FAILURE;
   }
+
+  signal(SIGINT, handle_signals);
+  signal(SIGQUIT, handle_signals);
+  signal(SIGTERM, handle_signals);
 
   std::string hostname{argv[1]};
   std::string port{argv[2]};
