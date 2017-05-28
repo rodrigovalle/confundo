@@ -149,12 +149,14 @@ void CFP::recv_event(uint8_t data[], size_t size) {
 
     case TIME_WAIT:
       // client responds to all FINs from server with ACKs until timeout (2s)
-      if (!check_conn(&pkt->hdr) || !pkt->hdr.fin_f) {
+      if (!(check_conn(&pkt->hdr))) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
       report(RECV, &pkt->hdr, cwnd, ssthresh, false);
-      send_ack(rcv_nxt);
+      if (handle_fin(&pkt->hdr)) {
+        send_ack(rcv_nxt);
+      }
       break;
 
     case CLOSED:
