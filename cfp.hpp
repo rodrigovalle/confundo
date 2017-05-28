@@ -85,7 +85,7 @@ class CFP {
   void timeout_event(); // RTO went off
   void disconnect_event(); // 
   void start();
-  bool send(PayloadT buf);
+  bool send(PayloadT data);
   void close();
   const struct sockaddr* getsockaddr();
 
@@ -97,8 +97,8 @@ class CFP {
   void send_fin();
 
   void send_syn();
-  void send_synack(struct cf_header* rx_hdr);
-  void send_ack_payload(struct cf_header* rx_hdr);
+  void send_synack();
+  void send_ack_payload();
 
   bool check_conn(struct cf_header* rx_hdr);
   bool handle_ack(struct cf_header* rx_hdr);

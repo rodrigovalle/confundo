@@ -54,14 +54,14 @@ void CFP::recv_event(uint8_t data[], size_t size) {
 
   switch (st) {
     case LISTEN:
-      // server receieves a SYN packet
+      // server receives a SYN packet
       if (!handle_syn(&pkt->hdr)) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
       report(RECV, &pkt->hdr, cwnd, ssthresh, false);
       st = SYN_RECEIVED;
-      send_synack(&pkt->hdr);
+      send_synack();
       break;
 
     case SYN_SENT:
@@ -74,18 +74,18 @@ void CFP::recv_event(uint8_t data[], size_t size) {
       st = ESTABLISHED;
       conn_id = pkt->hdr.conn;
 
-      send_ack_payload(&pkt->hdr);
+      send_ack_payload();
       break;
 
     case SYN_RECEIVED:
-      // server has received the initial SYN, waiting for ACK
-      if (!(handle_ack(&pkt->hdr) && check_conn(&pkt->hdr))) {
+      // server has sent SYN+ACK, waiting for ACK from client
+      if (!(check_conn(&pkt->hdr) && handle_ack(&pkt->hdr))) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
       st = ESTABLISHED;
       if (!handle_payload(pkt, size)) {
-        report(DROP, &pkt->hdr, 0, 0, false);
+        report(DROP, &pkt->hdr, 0, 0, false); // received out of order packet
         break;
       }
       report(RECV, &pkt->hdr, cwnd, ssthresh, false);
@@ -202,9 +202,8 @@ bool CFP::send(PayloadT data) {
   tx_hdr.seq = snd_nxt;
   if (st == ESTABLISHED) {
     return send_packet(&tx_hdr, data.first.data(), data.second);
-  } else {
-    return false;
   }
+  return false;
 }
 
 void CFP::close() {
@@ -222,7 +221,9 @@ bool CFP::send_packet(const struct cf_header* hdr, uint8_t* payload, size_t plsi
   struct cf_packet pkt = {};
   pkt.hdr = *hdr;
   pkt.hdr.conn = conn_id;
-  memcpy(&pkt.payload, payload, plsize);
+  if (payload) {
+    memcpy(&pkt.payload, payload, plsize);
+  }
 
   // check no. of outstanding packets + the one we want to send
   // note this can be rewritten as (snd_nxt - snd_una) + plsize <= cwnd
@@ -357,7 +358,7 @@ void CFP::send_syn() {
 
 // server recieves syn
 // sends synack in response
-void CFP::send_synack(struct cf_header* rx_hdr) { // ignore payload
+void CFP::send_synack() { // ignore payload
   struct cf_header tx_hdr = {};
 
   // create syn-ack & send
@@ -375,7 +376,7 @@ void CFP::send_synack(struct cf_header* rx_hdr) { // ignore payload
 
 // client recieves the server's syn ack
 // responds with an ACK packet with payload
-void CFP::send_ack_payload(struct cf_header* rx_hdr) {
+void CFP::send_ack_payload() {
   struct cf_header tx_hdr = {};
 
   tx_hdr.ack_f = true;
