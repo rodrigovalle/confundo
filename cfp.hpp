@@ -94,8 +94,8 @@ class CFP {
   bool send_packet(const struct cf_header* hdr, uint8_t* payload, size_t plsize);
   void resend_packet(const struct cf_packet* pkt, size_t size);
 
-  void send_ack(uint32_t ack);
-  void resend_ack(uint32_t ack);
+  void send_ack();
+  void resend_ack();
 
   void send_syn();
   void send_synack();
@@ -103,11 +103,12 @@ class CFP {
 
   void send_fin();
 
-  bool check_conn(struct cf_header* rx_hdr);
-  bool handle_ack(struct cf_header* rx_hdr);
-  bool handle_syn(struct cf_header* rx_hdr);
-  bool handle_fin(struct cf_header* rx_hdr);
-  bool handle_payload(struct cf_packet* pkt, size_t pktsize);
+  inline bool check_conn(struct cf_header* rx_hdr);
+  inline bool check_order(struct cf_header* rx_hdr);
+  void handle_ack(struct cf_header* rx_hdr);
+  void handle_syn(struct cf_header* rx_hdr);
+  void handle_fin();
+  void handle_payload(struct cf_packet* pkt, size_t pktsize);
 
   void set_first_payload(PayloadT buf);
   void clean_una_buf();

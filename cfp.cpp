@@ -55,23 +55,26 @@ void CFP::recv_event(uint8_t data[], size_t size) {
   switch (st) {
     case LISTEN:
       // server receives a SYN packet
-      if (!handle_syn(&pkt->hdr)) {
+      if (!(pkt->hdr.syn_f)) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
-      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
       st = SYN_RECEIVED;
+      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
+      handle_syn(&pkt->hdr);
       send_synack();
       break;
 
     case SYN_SENT:
       // client sent a SYN packet; expects a SYN+ACK from server
-      if (!(handle_syn(&pkt->hdr) && handle_ack(&pkt->hdr))) {
+      if (!(pkt->hdr.syn_f && pkt->hdr.ack_f)) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
-
       st = ESTABLISHED;
+      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
+      handle_syn(&pkt->hdr);
+      handle_ack(&pkt->hdr);
       conn_id = pkt->hdr.conn;
 
       send_ack_payload();
@@ -79,15 +82,14 @@ void CFP::recv_event(uint8_t data[], size_t size) {
 
     case SYN_RECEIVED:
       // server has sent SYN+ACK, waiting for ACK from client
-      if (!(check_conn(&pkt->hdr) && handle_ack(&pkt->hdr))) {
+      if (!(check_conn(&pkt->hdr) && check_order(&pkt->hdr) && pkt->hdr.ack_f)) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
       st = ESTABLISHED;
-      if (!handle_payload(pkt, size)) {
-        report(DROP, &pkt->hdr, 0, 0, false); // received out of order packet
-        break;
-      }
+      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
+      handle_ack(&pkt->hdr);
+      handle_payload(pkt, size);
       break;
 
     case ESTABLISHED:
@@ -95,25 +97,36 @@ void CFP::recv_event(uint8_t data[], size_t size) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
-      handle_ack(&pkt->hdr);
-      if (handle_fin(&pkt->hdr)) {
+      if (!check_order(&pkt->hdr)) {
+        report(DROP, &pkt->hdr, 0, 0, false);
+        resend_ack();
+        break;
+      }
+      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
+
+      if (pkt->hdr.ack_f) {
+        handle_ack(&pkt->hdr);
+      }
+
+      if (pkt->hdr.fin_f) {
+        handle_fin();
         st = LAST_ACK;
-        send_ack(rcv_nxt);
+        send_ack();
         send_fin();
         break; // FINs can't have payloads
       }
-      if (!handle_payload(pkt, size)) {
-        report(DROP, &pkt->hdr, 0, 0, false);
-        break;
-      }
+
+      handle_payload(pkt, size);
       break;
 
     case ACK_ALL:
       // client is waiting for server to ACK all packets before sending FIN
-      if (!(check_conn(&pkt->hdr) && handle_ack(&pkt->hdr))) {
+      if (!(check_conn(&pkt->hdr) && pkt->hdr.ack_f)) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
+      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
+      handle_ack(&pkt->hdr);
       if (snd_una == snd_nxt) {
         st = FIN_WAIT;
         send_fin();
@@ -122,12 +135,15 @@ void CFP::recv_event(uint8_t data[], size_t size) {
 
     case FIN_WAIT:
       // client sent fin, expects ACK from server before starting 2s timeout
-      if (!(check_conn(&pkt->hdr) && handle_ack(&pkt->hdr))) {
+      if (!(check_conn(&pkt->hdr) && pkt->hdr.ack_f)) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
-      if (handle_fin(&pkt->hdr)) {
-        send_ack(rcv_nxt);
+      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
+      handle_ack(&pkt->hdr);
+      if (pkt->hdr.fin_f) {
+        handle_fin();
+        send_ack();
       }
       st = TIME_WAIT;
       disconnect_timer.set_timeout(FINWAITTIME);
@@ -136,10 +152,12 @@ void CFP::recv_event(uint8_t data[], size_t size) {
 
     case LAST_ACK:
       // server sent FIN in response to client's FIN, expects ACK
-      if (!(check_conn(&pkt->hdr) && handle_ack(&pkt->hdr))) {
+      if (!(check_conn(&pkt->hdr) && pkt->hdr.ack_f)) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
+      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
+      handle_ack(&pkt->hdr);
       st = CLOSED;
       terminate_gracefully();
       break;
@@ -151,8 +169,9 @@ void CFP::recv_event(uint8_t data[], size_t size) {
         break;
       }
       report(RECV, &pkt->hdr, cwnd, ssthresh, false);
-      if (handle_fin(&pkt->hdr)) {
-        send_ack(rcv_nxt);
+      if (pkt->hdr.fin_f) {
+        handle_fin();
+        send_ack();
       }
       break;
 
@@ -259,11 +278,11 @@ void CFP::resend_packet(const struct cf_packet* pkt, size_t size) {
   rto_timer.set_timeout(RTO);
 }
 
-void CFP::send_ack(uint32_t ack) {
+void CFP::send_ack() {
   struct cf_packet pkt = {};
 
   pkt.hdr.ack_f = true;
-  pkt.hdr.ack = ack;
+  pkt.hdr.ack = rcv_nxt;
   pkt.hdr.seq = snd_nxt;
   pkt.hdr.conn = conn_id;
   report(SEND, &pkt.hdr, cwnd, ssthresh, false);
@@ -274,11 +293,11 @@ void CFP::send_ack(uint32_t ack) {
   rto_timer.set_timeout(RTO);
 }
 
-void CFP::resend_ack(uint32_t ack) {
+void CFP::resend_ack() {
   struct cf_packet pkt = {};
 
   pkt.hdr.ack_f = true;
-  pkt.hdr.ack = ack;
+  pkt.hdr.ack = rcv_nxt;
   pkt.hdr.seq = snd_nxt;
   pkt.hdr.conn = conn_id;
   report(SEND, &pkt.hdr, cwnd, ssthresh, true);
@@ -342,12 +361,12 @@ bool CFP::check_conn(struct cf_header* rx_hdr) {
   return rx_hdr->conn == conn_id;
 }
 
+bool CFP::check_order(struct cf_header* rx_hdr) {
+  return rx_hdr->seq == rcv_nxt;
+}
+
 // peer has sent a packet, check it for ack
-bool CFP::handle_ack(struct cf_header* rx_hdr) {
-  if (!(rx_hdr->ack_f)) {
-    return false;
-  }
-  report(RECV, rx_hdr, cwnd, ssthresh, false);
+void CFP::handle_ack(struct cf_header* rx_hdr) {
 
   /* 
    * check cases for acceptable ACK (SND.UNA < SEG.ACK =< SND.NXT):
@@ -380,43 +399,27 @@ bool CFP::handle_ack(struct cf_header* rx_hdr) {
       cwnd = (cwnd > CWNDCAP) ? CWNDCAP : cwnd;
     }
   }
-  return true;
 }
 
-bool CFP::handle_syn(struct cf_header* rx_hdr) {
-  if (!(rx_hdr->syn_f)) {
-    return false;
-  }
-
+void CFP::handle_syn(struct cf_header* rx_hdr) {
   rcv_nxt = rx_hdr->seq + 1;
   rcv_nxt %= MAXSEQ;
-  return true;
 }
 
-bool CFP::handle_fin(struct cf_header* rx_hdr) {
-  if (!rx_hdr->fin_f) {
-    return false;
-  }
+void CFP::handle_fin() {
   rcv_nxt += 1;
   rcv_nxt %= MAXSEQ;
-  return true;
 }
 
 // returns false if out of order (dropped) packet
-bool CFP::handle_payload(struct cf_packet* pkt, size_t pktsize) {
-  if (pkt->hdr.seq != rcv_nxt) {
-    resend_ack(rcv_nxt);
-    return false; // out of order packet
-
-  } else if (pktsize > sizeof(struct cf_header)) { // received in order packet
+void CFP::handle_payload(struct cf_packet* pkt, size_t pktsize) {
+  if (pktsize > sizeof(struct cf_header)) {
     rcv_nxt += (pktsize - sizeof(struct cf_header));
     rcv_nxt %= MAXSEQ;
-    send_ack(rcv_nxt);
+    send_ack();
     ofile.write(reinterpret_cast<char*>(pkt->payload),
                 pktsize - sizeof(struct cf_header));
-    return true;
   }
-  return true; // packet was in order but had no payload
 }
 
 void CFP::clean_una_buf() {
