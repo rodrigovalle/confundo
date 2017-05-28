@@ -11,23 +11,23 @@ void report(op_T op, const cf_header* hdr, uint32_t cwnd, uint32_t ssthresh,
             bool duplicate) {
   switch (op) {
     case SEND:
-      std::cout << "SEND ";
+      std::cout << "SEND";
       break;
     case RECV:
-      std::cout << "RECV ";
+      std::cout << "RECV";
       break;
     case DROP:
-      std::cout << "DROP ";
+      std::cout << "DROP";
       break;
   }
 
-    std::cout << hdr->seq << " ";
-    std::cout << hdr->ack << " ";
-    std::cout << hdr->conn << " ";
+    std::cout << " " << hdr->seq;
+    std::cout << " " << hdr->ack;
+    std::cout << " " << hdr->conn;
 
   if (cwnd != 0 || ssthresh != 0) {
-    std::cout << cwnd << " ";
-    std::cout << ssthresh;
+    std::cout << " " << cwnd;
+    std::cout << " " << ssthresh;
   }
 
   if (hdr->ack_f) {

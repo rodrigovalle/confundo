@@ -97,6 +97,7 @@ void CFP::recv_event(uint8_t data[], size_t size) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
+
       if (!check_order(&pkt->hdr)) {
         report(DROP, &pkt->hdr, 0, 0, false);
         resend_ack();
@@ -104,16 +105,16 @@ void CFP::recv_event(uint8_t data[], size_t size) {
       }
       report(RECV, &pkt->hdr, cwnd, ssthresh, false);
 
-      if (pkt->hdr.ack_f) {
-        handle_ack(&pkt->hdr);
-      }
-
       if (pkt->hdr.fin_f) {
         handle_fin();
         st = LAST_ACK;
         send_ack();
         send_fin();
         break; // FINs can't have payloads
+      }
+
+      if (pkt->hdr.ack_f) {
+        handle_ack(&pkt->hdr);
       }
 
       handle_payload(pkt, size);
@@ -152,14 +153,20 @@ void CFP::recv_event(uint8_t data[], size_t size) {
 
     case LAST_ACK:
       // server sent FIN in response to client's FIN, expects ACK
-      if (!(check_conn(&pkt->hdr) && pkt->hdr.ack_f)) {
+      if (!(check_conn(&pkt->hdr))) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
       report(RECV, &pkt->hdr, cwnd, ssthresh, false);
-      handle_ack(&pkt->hdr);
-      st = CLOSED;
-      terminate_gracefully();
+
+      if (pkt->hdr.ack_f) {
+        handle_ack(&pkt->hdr);
+        st = CLOSED;
+        terminate_gracefully();
+      } else if (pkt->hdr.fin_f) { // client missed our ACK response
+        resend_ack();
+      }
+
       break;
 
     case TIME_WAIT:
@@ -311,6 +318,18 @@ void CFP::resend_ack() {
 void CFP::send_fin() {
   struct cf_header tx_hdr = {};
   tx_hdr.fin_f = true;
+  send_packet(&tx_hdr, nullptr, 0); // send FIN and retransmit if necessary
+  
+  // fin takes 1 byte in the stream
+  snd_nxt += 1;
+  snd_nxt %= MAXSEQ;
+}
+
+void CFP::send_finack() {
+  struct cf_header tx_hdr = {};
+  tx_hdr.fin_f = true;
+  tx_hdr.ack_f = true;
+  tx_hdr.ack = rcv_nxt;
   send_packet(&tx_hdr, nullptr, 0); // send FIN and retransmit if necessary
   
   // fin takes 1 byte in the stream

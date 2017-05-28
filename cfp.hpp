@@ -102,6 +102,7 @@ class CFP {
   void send_ack_payload();
 
   void send_fin();
+  void send_finack();
 
   inline bool check_conn(struct cf_header* rx_hdr);
   inline bool check_order(struct cf_header* rx_hdr);
