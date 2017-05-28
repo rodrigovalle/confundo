@@ -18,7 +18,7 @@
 // server constructor
 CFP::CFP(const UDPMux& udpmux, uint16_t id, const std::string& directory)
     : st{LISTEN}, snd_nxt{SERVERISN}, snd_una{SERVERISN}, rcv_nxt{0},
-      cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT}, mux{udpmux},
+      cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT}, conn_id{id}, mux{udpmux},
       ofile{directory + std::to_string(id) + ".file"}, directory{directory}
 {}
 
@@ -70,7 +70,7 @@ void CFP::recv_event(uint8_t data[], size_t size) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
-      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
+
       st = ESTABLISHED;
       conn_id = pkt->hdr.conn;
 
@@ -88,7 +88,6 @@ void CFP::recv_event(uint8_t data[], size_t size) {
         report(DROP, &pkt->hdr, 0, 0, false); // received out of order packet
         break;
       }
-      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
       break;
 
     case ESTABLISHED:
@@ -96,10 +95,11 @@ void CFP::recv_event(uint8_t data[], size_t size) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
-      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
       handle_ack(&pkt->hdr);
       if (handle_fin(&pkt->hdr)) {
         st = LAST_ACK;
+        send_ack(rcv_nxt);
+        send_fin();
         break; // FINs can't have payloads
       }
       if (!handle_payload(pkt, size)) {
@@ -110,7 +110,6 @@ void CFP::recv_event(uint8_t data[], size_t size) {
 
     case ACK_ALL:
       // client is waiting for server to ACK all packets before sending FIN
-      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
       if (!(check_conn(&pkt->hdr) && handle_ack(&pkt->hdr))) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
@@ -127,13 +126,12 @@ void CFP::recv_event(uint8_t data[], size_t size) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
-      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
       if (handle_fin(&pkt->hdr)) {
         send_ack(rcv_nxt);
       }
       st = TIME_WAIT;
       disconnect_timer.set_timeout(FINWAITTIME);
-      rto_timer.set_timeout(0);
+      rto_timer.cancel_timeout();
       break;
 
     case LAST_ACK:
@@ -142,7 +140,6 @@ void CFP::recv_event(uint8_t data[], size_t size) {
         report(DROP, &pkt->hdr, 0, 0, false);
         break;
       }
-      report(RECV, &pkt->hdr, cwnd, ssthresh, false);
       st = CLOSED;
       terminate_gracefully();
       break;
@@ -167,6 +164,7 @@ void CFP::recv_event(uint8_t data[], size_t size) {
 }
 
 void CFP::timeout_event() {
+  rto_timer.read(); // clear timerfd for epoll()
   // didn't receive an ACK in RTO seconds
   // resend all packets XXX
   for (auto pkt : una_buf) {
@@ -179,6 +177,7 @@ void CFP::timeout_event() {
 }
 
 void CFP::disconnect_event() {
+  disconnect_timer.read(); // clear timerfd
   switch (st) {
     case TIME_WAIT:
       st = CLOSED;
@@ -199,7 +198,6 @@ void CFP::start() {
 
 bool CFP::send(PayloadT data) {
   struct cf_header tx_hdr = {};
-  tx_hdr.seq = snd_nxt;
   if (st == ESTABLISHED) {
     return send_packet(&tx_hdr, data.first.data(), data.second);
   }
@@ -220,6 +218,7 @@ void CFP::close() {
 bool CFP::send_packet(const struct cf_header* hdr, uint8_t* payload, size_t plsize) {
   struct cf_packet pkt = {};
   pkt.hdr = *hdr;
+  pkt.hdr.seq = snd_nxt;
   pkt.hdr.conn = conn_id;
   if (payload) {
     memcpy(&pkt.payload, payload, plsize);
@@ -233,58 +232,18 @@ bool CFP::send_packet(const struct cf_header* hdr, uint8_t* payload, size_t plsi
   if (snd_una <= snd_nxt) {
     winsize = snd_nxt - snd_una;
   } else {
-    winsize = (MAXSEQ - snd_una) + snd_nxt;
+    winsize = (MAXSEQ - snd_una) + snd_nxt - 1;
   }
-
-  switch (st) {
-    case LISTEN:
-      std::cerr << "LISTEN";
-      break;
-    case SYN_SENT:
-      std::cerr << "SYN_SENT";
-      break;
-    case SYN_RECEIVED:
-      std::cerr << "SYN_RECEIVED";
-      break;
-    case ESTABLISHED:
-      std::cerr << "ESTABLISHED";
-      break;
-    case ACK_ALL:
-      std::cerr << "ACK_ALL";
-      break;
-    case FIN_WAIT:
-      std::cerr << "FIN_WAIT";
-      break;
-    case LAST_ACK:
-      std::cerr << "LAST_ACK";
-      break;
-    case TIME_WAIT:
-      std::cerr << "TIME_WAIT";
-      break;
-    case CLOSED:
-      std::cerr << "CLOSED";
-      break;
-    default:
-      std::cerr << "whoops";
-      break;
-
-  }
-  std::cerr << std::endl;
 
   if (!(winsize + plsize <= cwnd)) {
     // must wait until the window has room
-    std::cerr << "can't send any more packets:" << std::endl;
-    std::cerr << "  snd_una: " << snd_una << std::endl;
-    std::cerr << "  snd_nxt: " << snd_nxt << std::endl;
-    std::cerr << "  plsize:  " << plsize << std::endl;
-    std::cerr << "  cwnd:    " << cwnd << std::endl;
     return false;
   }
 
   una_buf.emplace_back(pkt, plsize);
+  report(SEND, &pkt.hdr, cwnd, ssthresh, false);
   host_to_net(&pkt.hdr);
   mux.send(this, reinterpret_cast<uint8_t*>(&pkt), sizeof(struct cf_header) + plsize);
-  report(SEND, hdr, cwnd, ssthresh, false);
 
   snd_nxt = (snd_nxt + plsize) % MAXSEQ;
   rto_timer.set_timeout(RTO);
@@ -333,8 +292,6 @@ void CFP::resend_ack(uint32_t ack) {
 void CFP::send_fin() {
   struct cf_header tx_hdr = {};
   tx_hdr.fin_f = true;
-  tx_hdr.seq = snd_nxt;
-  tx_hdr.conn = conn_id;
   send_packet(&tx_hdr, nullptr, 0); // send FIN and retransmit if necessary
   
   // fin takes 1 byte in the stream
@@ -348,7 +305,6 @@ void CFP::send_syn() {
 
   // create syn packet & send
   tx_hdr.syn_f = true;
-  tx_hdr.seq = snd_nxt;
   send_packet(&tx_hdr, nullptr, 0);
 
   // syn takes 1 byte in the stream
@@ -364,9 +320,7 @@ void CFP::send_synack() { // ignore payload
   // create syn-ack & send
   tx_hdr.syn_f = true;
   tx_hdr.ack_f = true;
-  tx_hdr.seq = snd_nxt;
   tx_hdr.ack = rcv_nxt;
-  tx_hdr.conn = conn_id;
   send_packet(&tx_hdr, nullptr, 0);
 
   // syn takes 1 byte in the stream
@@ -381,8 +335,6 @@ void CFP::send_ack_payload() {
 
   tx_hdr.ack_f = true;
   tx_hdr.ack = rcv_nxt;
-  tx_hdr.seq = snd_nxt;
-  tx_hdr.conn = conn_id;
   send_packet(&tx_hdr, first_payload.first.data(), first_payload.second);
 }
 
@@ -395,6 +347,7 @@ bool CFP::handle_ack(struct cf_header* rx_hdr) {
   if (!(rx_hdr->ack_f)) {
     return false;
   }
+  report(RECV, rx_hdr, cwnd, ssthresh, false);
 
   /* 
    * check cases for acceptable ACK (SND.UNA < SEG.ACK =< SND.NXT):
@@ -417,8 +370,6 @@ bool CFP::handle_ack(struct cf_header* rx_hdr) {
        (rx_hdr->ack == snd_nxt)) {
     // update the unacknowedged packets window
     snd_una = rx_hdr->ack;
-    std::cerr << "SND.UNA: " << snd_una << std::endl;
-    std::cerr << "SND.NXT: " << snd_nxt << std::endl;
     clean_una_buf();
 
     // update the congestion control window
@@ -426,6 +377,7 @@ bool CFP::handle_ack(struct cf_header* rx_hdr) {
       cwnd += PAYLOAD;
     } else {
       cwnd += PAYLOAD*PAYLOAD/cwnd;
+      cwnd = (cwnd > CWNDCAP) ? CWNDCAP : cwnd;
     }
   }
   return true;
@@ -437,6 +389,7 @@ bool CFP::handle_syn(struct cf_header* rx_hdr) {
   }
 
   rcv_nxt = rx_hdr->seq + 1;
+  rcv_nxt %= MAXSEQ;
   return true;
 }
 
@@ -445,6 +398,7 @@ bool CFP::handle_fin(struct cf_header* rx_hdr) {
     return false;
   }
   rcv_nxt += 1;
+  rcv_nxt %= MAXSEQ;
   return true;
 }
 
@@ -456,6 +410,7 @@ bool CFP::handle_payload(struct cf_packet* pkt, size_t pktsize) {
 
   } else if (pktsize > sizeof(struct cf_header)) { // received in order packet
     rcv_nxt += (pktsize - sizeof(struct cf_header));
+    rcv_nxt %= MAXSEQ;
     send_ack(rcv_nxt);
     ofile.write(reinterpret_cast<char*>(pkt->payload),
                 pktsize - sizeof(struct cf_header));
@@ -467,7 +422,6 @@ bool CFP::handle_payload(struct cf_packet* pkt, size_t pktsize) {
 void CFP::clean_una_buf() {
   size_t plsize;
   struct cf_packet pkt;
-  std::cerr << "===========UNA BUF============" << std::endl;
 
   for (auto i = una_buf.begin(); i < una_buf.end(); i++) {
     std::tie(pkt, plsize) = *i;
@@ -486,11 +440,9 @@ void CFP::clean_una_buf() {
         ((snd_nxt == snd_una))) {
       una_buf.erase(i);
     } else {
-      //break, these packets are ordered by sequence number
-      std::cerr << pkt.hdr.seq << "+" << plsize << std::endl;
+      break; // these packets are ordered by sequence number
     }
   }
-  std::cerr << "==============================" << std::endl;
 }
 
 void CFP::terminate_gracefully() {

@@ -16,6 +16,7 @@
 #define CLIENTISN    12345
 //#define CLIENTISN    102300
 #define CWNDINIT     512
+#define CWNDCAP      51200
 #define SSTHRESHINIT 10000
 #define MAXSEQ       (102400 + 1)
 #define RTO          0.5
@@ -92,13 +93,15 @@ class CFP {
  private:
   bool send_packet(const struct cf_header* hdr, uint8_t* payload, size_t plsize);
   void resend_packet(const struct cf_packet* pkt, size_t size);
+
   void send_ack(uint32_t ack);
   void resend_ack(uint32_t ack);
-  void send_fin();
 
   void send_syn();
   void send_synack();
   void send_ack_payload();
+
+  void send_fin();
 
   bool check_conn(struct cf_header* rx_hdr);
   bool handle_ack(struct cf_header* rx_hdr);

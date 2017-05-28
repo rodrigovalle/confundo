@@ -32,6 +32,13 @@ void Timer::set_timeout(double timeout) {
   }
 }
 
+/* reads the data from timerfd so we can continue polling
+ * call only after a timeout event otherwise it will block */
+void Timer::read() {
+  uint8_t buf;
+  ::read(timerfd, &buf, 8);
+}
+
 void Timer::cancel_timeout() {
   struct itimerspec timer = {};
 

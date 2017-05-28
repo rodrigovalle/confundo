@@ -73,7 +73,7 @@ int main(int argc, char* argv[])
             file.read(reinterpret_cast<char*>(buf.first.data()), 512);
             buf.second = file.gcount();
 
-            if (!cfp.send(buf)) {
+            if (buf.second == 0 || !cfp.send(buf)) {
               sstate = RETRY_LAST_SEND;
               break;
             }
@@ -89,7 +89,6 @@ int main(int argc, char* argv[])
           // no more data to transmit, but continue delivering cfp packets
           break;
       }
-      std::cerr << std::endl;
     }
 
   } catch (connection_closed_gracefully& e) {

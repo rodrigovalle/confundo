@@ -11,6 +11,7 @@ class Timer {
 
   /* sets a new timeout, cancelling the old one */
   void set_timeout(double timeout); // arm the timer
+  void read();
   void cancel_timeout(); // disarm the timer
 
  private:

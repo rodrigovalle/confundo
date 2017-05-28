@@ -16,4 +16,7 @@ specifying the full path to the `tcp.lua` script:
 ## Helpful links
 [UDP tutorial](http://www.microhowto.info/howto/send_a_udp_datagram_in_c.html)  
 [UDP reading partially from sockets](http://stackoverflow.com/questions/3069204)  
-Linux man page for getaddrinfo()
+Linux man page for getaddrinfo()  
+[Epoll Tutorial](https://banu.com/blog/2/how-to-use-epoll-a-complete-example-in-c/)  
+[Timerfd Stackoverflow](https://stackoverflow.com/questions/12102740)  
+[C++ reference](https://duckduckgo.com/?q=c%2B%2B+reference&ia=cheatsheet)
