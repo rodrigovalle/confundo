@@ -14,8 +14,10 @@
 #define PAYLOAD      512
 #define SERVERISN    4321
 #define CLIENTISN    12345
+//#define CLIENTISN    102300
 #define CWNDINIT     512
 #define SSTHRESHINIT 10000
+#define MAXSEQ       (102400 + 1)
 #define RTO          0.5
 #define FINWAITTIME  2
 #define DISCONNECTTO 10
@@ -76,7 +78,7 @@ class CFP {
  public:
   CFP(const UDPMux& udpmux, uint16_t id, const std::string& directory); // server
   CFP(const UDPMux& udpmux, PayloadT first_pl); // client
-  CFP(CFP&& o);
+  CFP(CFP&& o) noexcept;
   ~CFP();
 
   void recv_event(uint8_t data[], size_t size);
@@ -89,8 +91,9 @@ class CFP {
 
  private:
   bool send_packet(const struct cf_header* hdr, uint8_t* payload, size_t plsize);
-  void send_packet_nocc(const struct cf_packet* pkt, size_t size, bool resnd);
+  void resend_packet(const struct cf_packet* pkt, size_t size);
   void send_ack(uint32_t ack);
+  void resend_ack(uint32_t ack);
   void send_fin();
 
   void send_syn();
@@ -99,8 +102,9 @@ class CFP {
 
   bool check_conn(struct cf_header* rx_hdr);
   bool handle_ack(struct cf_header* rx_hdr);
-  void handle_payload(struct cf_packet* pkt, size_t pktsize);
-  void handle_fin(struct cf_header* rx_hdr);
+  bool handle_syn(struct cf_header* rx_hdr);
+  bool handle_fin(struct cf_header* rx_hdr);
+  bool handle_payload(struct cf_packet* pkt, size_t pktsize);
 
   void set_first_payload(PayloadT buf);
   void clean_una_buf();
@@ -112,18 +116,19 @@ class CFP {
   uint32_t snd_nxt; // sequence no. of next byte in the stream
   uint32_t snd_una; // earliest sequence no. that has been sent but not acked
   uint32_t rcv_nxt; // sequence no. of next byte expected to be recvd from peer
-  uint16_t conn_id;
   std::deque<std::pair<struct cf_packet, size_t>> una_buf;
 
-  uint32_t cwnd;
-  uint32_t ssthresh;
+  uint64_t cwnd;
+  uint64_t ssthresh;
 
+  uint16_t conn_id;
   const UDPMux& mux;
+
+  PayloadT first_payload;
 
   std::ofstream ofile;
   std::string directory;
 
-  PayloadT first_payload;
   Timer rto_timer;
   Timer disconnect_timer;
 };

@@ -89,6 +89,7 @@ int main(int argc, char* argv[])
           // no more data to transmit, but continue delivering cfp packets
           break;
       }
+      std::cerr << std::endl;
     }
 
   } catch (connection_closed_gracefully& e) {

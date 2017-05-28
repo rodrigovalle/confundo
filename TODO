@@ -1,0 +1,2 @@
+Read TCP RFC again -- make sure to know which packet to retransmit and when the
+RTO timer should be set/reset/disabled
