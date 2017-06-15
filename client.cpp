@@ -52,7 +52,7 @@ int main(int argc, char* argv[])
       OK,
       RETRY_LAST_SEND,
       FILE_EOF
-    } sstate = OK;
+    } send_state = OK;
 
     while (true) {
       try {
@@ -62,26 +62,29 @@ int main(int argc, char* argv[])
       }
 
       // ugly state machine to deal with resending failed sends and file eof
-      switch (sstate) {
+      switch (send_state) {
         case RETRY_LAST_SEND:
           if (!cfp.send(buf)) {
+            std::cerr << "failed to send" << std::endl;
             break; // failed to send, try again next time kiddo
           } // else, fall to next case and send until we can't anymore
+
+          if (file.eof()) { // hit the end of the file
+            std::cerr << "hit EOF, closing file" << std::endl;
+            cfp.close();
+            send_state = FILE_EOF;
+            break;
+          }
 
         case OK:
           while (!file.eof()) {
             file.read(reinterpret_cast<char*>(buf.first.data()), 512);
             buf.second = file.gcount();
 
-            if (buf.second == 0 || !cfp.send(buf)) {
-              sstate = RETRY_LAST_SEND;
+            if (!cfp.send(buf)) {
+              send_state = RETRY_LAST_SEND;
               break;
             }
-          }
-
-          if (file.eof()) { // hit the end of the file
-            cfp.close();
-            sstate = FILE_EOF;
           }
           break;
 
