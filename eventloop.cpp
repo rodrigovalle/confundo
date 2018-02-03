@@ -1,7 +1,6 @@
 #include "eventloop.hpp"
 
 #include "cfp.hpp"
-#include "udpmux.hpp"
 #include "udpsocket.hpp"
 #include "util.hpp"
 
@@ -121,8 +120,4 @@ void EventLoop::remove(CFP& cfp) {
     }
   }
   */
-}
-
-const UDPMux& EventLoop::getmux() {
-  return mux;
 }

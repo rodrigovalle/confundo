@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
       try {
         evloop.run();
       } catch (delivery_exception& ex) {
-        CFP new_cfp{evloop.getmux(), id, filedir};
+        CFP new_cfp{/*XXX: UDPSocket*/, filedir, id};
         evloop.add(std::move(new_cfp), ex.addr).recv_event(ex.data, ex.size);
         id++;
       } catch (connection_closed& e) {

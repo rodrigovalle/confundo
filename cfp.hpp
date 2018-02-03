@@ -2,9 +2,10 @@
 #define _CONFUNDOSOCKET_HPP
 
 #include "timer.hpp"
-#include "udpmux.hpp"
 #include "udpsocket.hpp"
+#include "eventloop.hpp"
 
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <fstream>
@@ -57,6 +58,7 @@ struct cf_packet {
 
 using PayloadT = std::pair<std::array<uint8_t, 512>, size_t>;
 
+class CFP;
 class connection_closed : public std::runtime_error {
  public:
   explicit connection_closed(CFP& which, const char* what)
@@ -73,12 +75,11 @@ class connection_closed_ungracefully : public connection_closed {
   using connection_closed::connection_closed;
 };
 
-class EventLoop;
 class CFP {
  friend EventLoop;
  public:
-  CFP(const UDPMux& udpmux, uint16_t id, const std::string& directory); // server
-  CFP(const UDPMux& udpmux, PayloadT first_pl); // client
+  CFP(const UDPSocket& sock, const std::string& directory, uint16_t id); // server
+  CFP(const UDPSocket& sock, PayloadT first_pl); // client
   CFP(CFP&& o) noexcept;
   ~CFP();
 
@@ -88,7 +89,6 @@ class CFP {
   void start();
   bool send(PayloadT data);
   void close();
-  const struct sockaddr* getsockaddr();
 
  private:
   bool send_packet(const struct cf_header* hdr, uint8_t* payload, size_t plsize);
@@ -127,7 +127,7 @@ class CFP {
   uint64_t ssthresh;
 
   uint16_t conn_id;
-  const UDPMux& mux;
+  const UDPSocket& udpsock;
 
   PayloadT first_payload;
 

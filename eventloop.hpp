@@ -1,7 +1,6 @@
 #ifndef _EVENTLOOP_HPP
 #define _EVENTLOOP_HPP
 
-#include "udpmux.hpp"
 #include "udpsocket.hpp"
 
 #include <sys/epoll.h>

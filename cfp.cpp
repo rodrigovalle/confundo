@@ -11,30 +11,27 @@
 #include <unistd.h>
 #include <utility>
 
-/* Notes:
- * - when using mux.send() make sure to add the header size
- */
-
 // server constructor
-CFP::CFP(const UDPMux& udpmux, uint16_t id, const std::string& directory)
+CFP::CFP(const UDPSocket& sock, const std::string& directory, uint16_t id)
     : st{LISTEN}, snd_nxt{SERVERISN}, snd_una{SERVERISN}, rcv_nxt{0},
-      cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT}, conn_id{id}, mux{udpmux},
+      cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT}, conn_id{id}, udpsock{sock},
       ofile{directory + std::to_string(id) + ".file"}, directory{directory}
 {}
 
 // client constructor
-CFP::CFP(const UDPMux& udpmux, PayloadT first_pl)
+CFP::CFP(const UDPSocket& sock, PayloadT first_pl)
     : st{SYN_SENT}, snd_nxt{CLIENTISN}, snd_una{CLIENTISN}, rcv_nxt{0},
-      cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT},
-      conn_id{0}, mux{udpmux}, first_payload{std::move(first_pl)}
+      cwnd{CWNDINIT}, ssthresh{SSTHRESHINIT}, conn_id{0}, udpsock{sock},
+      first_payload{std::move(first_pl)}
 {}
 
 // move constructor
 CFP::CFP(CFP&& o) noexcept
     : st{o.st}, snd_nxt{o.snd_nxt}, snd_una{o.snd_una}, rcv_nxt{o.rcv_nxt},
-    una_buf{std::move(o.una_buf)}, cwnd{o.cwnd}, ssthresh{o.ssthresh},
-    conn_id{o.conn_id}, mux{o.mux},
-    first_payload{std::move(o.first_payload)}, ofile{std::move(o.ofile)}
+      una_buf{std::move(o.una_buf)},
+      cwnd{o.cwnd}, ssthresh{o.ssthresh}, conn_id{o.conn_id}, udpsock{o.udpsock},
+      first_payload{std::move(o.first_payload)}, ofile{std::move(o.ofile)},
+      rto_timer{std::move(o.rto_timer)}, disconnect_timer{std::move(o.rto_timer)}
 {}
 
 CFP::~CFP() {
@@ -269,7 +266,8 @@ bool CFP::send_packet(const struct cf_header* hdr, uint8_t* payload, size_t plsi
   una_buf.emplace_back(pkt, plsize);
   report(SEND, &pkt.hdr, cwnd, ssthresh, false);
   host_to_net(&pkt.hdr);
-  mux.send(this, reinterpret_cast<uint8_t*>(&pkt), sizeof(struct cf_header) + plsize);
+  udpsocket.send(reinterpret_cast<uint8_t*>(&pkt),
+                 sizeof(struct cf_header) + plsize);
 
   snd_nxt = (snd_nxt + plsize) % MAXSEQ;
   rto_timer.set_timeout(RTO);
@@ -280,7 +278,7 @@ bool CFP::send_packet(const struct cf_header* hdr, uint8_t* payload, size_t plsi
 void CFP::resend_packet(const struct cf_packet* pkt, size_t size) {
   struct cf_packet tx_pkt = *pkt;
   host_to_net(&tx_pkt.hdr);
-  mux.send(this, reinterpret_cast<uint8_t*>(&tx_pkt), sizeof(struct cf_header) + size);
+  udpsocket.sendto(this, reinterpret_cast<uint8_t*>(&tx_pkt), sizeof(struct cf_header) + size);
   report(SEND, &pkt->hdr, cwnd, ssthresh, true);
   rto_timer.set_timeout(RTO);
 }
